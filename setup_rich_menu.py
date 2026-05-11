@@ -43,11 +43,16 @@ def _headers_binary(ct: str):
 
 
 def pwa_base() -> str:
-    if not APP_URL:
+    """PWA 根路徑（含 /app、不含 #fragment；Rich Menu 各格另加錨點）。"""
+    raw = (os.getenv("APP_URL", "") or "").strip().rstrip("/")
+    if not raw:
         sys.exit("❌ 請設定 APP_URL，例如 https://xxx.onrender.com/app")
-    if APP_URL.endswith("/app"):
-        return APP_URL
-    return APP_URL + "/app"
+    base = raw.split("#")[0].split("?")[0].rstrip("/")
+    if not base.lower().startswith("https://"):
+        sys.exit("❌ APP_URL 必須為 https:// 開頭（LINE Rich Menu 規定），且勿在 APP_URL 寫 # 錨點")
+    if base.endswith("/app"):
+        return base
+    return base + "/app"
 
 
 def menu_cells():
