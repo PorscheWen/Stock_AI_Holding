@@ -1,0 +1,26 @@
+# Render Blueprint：Stock_AI_Holding（Flask PWA）
+# 使用方式：Dashboard → Blueprints → New Blueprint Instance → 連結此 repo
+# 首次部署後，將環境變數 APP_URL 設為 https://<你的服務名>.onrender.com/app（須 HTTPS，且含 /app）
+# 免費 Web 的檔案系統為暫存；若需長期保留 database/data/portfolios.json，請在該服務掛載 Persistent Disk 並掛載到專案根目錄或 database/data
+services:
+  - type: web
+    name: stock-ai-holding
+    runtime: python
+    region: singapore
+    plan: free
+    branch: main
+    buildCommand: pip install -r requirements.txt
+    startCommand: python app.py
+    healthCheckPath: /health
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: APP_URL
+        sync: false
+      - key: LINE_CHANNEL_ACCESS_TOKEN
+        sync: false
+      # 選用：與 .env.example 相同
+      # - key: CLAUDE_CODE_OAUTH_TOKEN
+      #   sync: false
+      # - key: CLAUDE_MODEL
+      #   sync: false

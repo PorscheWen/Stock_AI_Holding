@@ -22,6 +22,15 @@ python app.py
 
 瀏覽器開啟：`http://127.0.0.1:5000/app`
 
+## Render 部署
+
+1. 將此 repo 推上 GitHub，在 [Render](https://render.com) 建立 **Blueprint** 並選取含 `render.yaml` 的 repo，或手動建立 **Web Service**（Runtime：**Python 3**）。
+2. **Root Directory**：若 monorepo 才需填 `Stock_AI_Holding`；此資料夾若為獨立 repo 則留空。
+3. **Build Command**：`pip install -r requirements.txt`  
+   **Start Command**：`python app.py`（Render 會注入 `PORT`，`app.py` 已讀取。）
+4. **Environment**：於 Dashboard 設定與 `.env.example` 相同變數；`APP_URL` 請在首次部署取得網址後設為 `https://<服務名>.onrender.com/app`。
+5. **持久化**：免費方案重啟／重新部署後本機 JSON 可能清空；要長期保存持股檔請為該 Web Service 新增 **Persistent Disk**，掛載路徑設為 `database/data`（與 `portfolios.json` 所在目錄一致）。
+
 ## LINE Rich Menu
 
 1. 將服務部署到 **HTTPS**（如 Render、Cloud Run），取得 `https://你的網域/app`。  
