@@ -103,8 +103,15 @@ def draw_menu_jpeg() -> bytes:
     cw = W // 3
     ch_top = H // 2
     ch_bot = H - ch_top
-    # 無深色底色：白底、不畫格線／填色區塊
-    img = Image.new("RGB", (W, H), "#FFFFFF")
+    # 背景與格狀填色（LINE Rich Menu 建議對比清楚）
+    BG = "#0D1320"
+    CELL_FILL_A = "#152238"
+    CELL_FILL_B = "#1A2842"
+    CELL_OUTLINE = "#2A4080"
+    TEXT_MAIN = "#E8EAF6"
+    TEXT_SUB = "#9FA8DA"
+
+    img = Image.new("RGB", (W, H), BG)
     draw = ImageDraw.Draw(img)
 
     def font_text(sz: int):
@@ -145,7 +152,14 @@ def draw_menu_jpeg() -> bytes:
             x0 = col * cw if col < 2 else 2 * cw
             w = cw if col < 2 else (W - 2 * cw)
             emoji_ch, label, _uri = cells[idx]
+            fill = CELL_FILL_A if idx % 2 == 0 else CELL_FILL_B
             idx += 1
+            draw.rectangle(
+                [x0, y0, x0 + w - 1, y0 + h - 1],
+                fill=fill,
+                outline=CELL_OUTLINE,
+                width=4,
+            )
             cx = x0 + w // 2
             cy = y0 + h // 2
             em_y = cy - int(h * 0.22)
@@ -161,13 +175,13 @@ def draw_menu_jpeg() -> bytes:
                     embedded_color=True,
                 )
             except TypeError:
-                draw.text((cx, em_y), emoji_ch, font=f_em, anchor="mm", fill="#222222")
+                draw.text((cx, em_y), emoji_ch, font=f_em, anchor="mm", fill=TEXT_MAIN)
 
-            draw.text((cx, title_y), label, fill="#111111", font=f_lg, anchor="mm")
+            draw.text((cx, title_y), label, fill=TEXT_MAIN, font=f_lg, anchor="mm")
             draw.text(
                 (cx, sub_y),
                 "Stock Holding",
-                fill="#555555",
+                fill=TEXT_SUB,
                 font=f_sm,
                 anchor="mm",
             )
