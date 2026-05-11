@@ -1,13 +1,17 @@
 {
   "name": "Stock AI Holding",
   "short_name": "持股",
-  "description": "紀錄與瀏覽持股，支援截圖匯入",
+  "description": "Agent 操作建議、持股與截圖匯入",
   "start_url": "/app",
   "scope": "/",
   "display": "standalone",
   "background_color": "#0a0e1a",
   "theme_color": "#3949ab",
   "shortcuts": [
+    {
+      "name": "Agent 建議",
+      "url": "/app#home"
+    },
     {
       "name": "持股表",
       "url": "/app#holdings"

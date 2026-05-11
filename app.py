@@ -9,7 +9,9 @@ from flask import Flask, jsonify, render_template, request, send_from_directory
 import yfinance as yf
 
 from agents.screenshot_agent import ScreenshotAgent
+from agents.holding_advisor_agent import run_for_portfolio
 from database.portfolio_db import PortfolioDB
+from database import advisor_store
 
 load_dotenv()
 
@@ -36,6 +38,11 @@ def index():
         "service": "Stock_AI_Holding",
         "pwa": "/app",
         "health": "/health",
+        "advisor": {
+            "run": "POST /api/advisor/run",
+            "latest": "GET /api/advisor/latest",
+            "history": "GET /api/advisor/history?limit=10",
+        },
     }), 200
 
 
@@ -151,6 +158,57 @@ def api_screenshot_import():
     if not stocks:
         return jsonify({"error": "stocks required"}), 400
     return jsonify(db.batch_add_stocks(uid, stocks))
+
+
+@app.post("/api/advisor/run")
+def api_advisor_run():
+    """一鍵執行 Agent 建議：依目前持股分析並寫入歷史。"""
+    uid, err = _require_user_id()
+    if err:
+        return err
+    stocks = db.get_portfolio(uid)
+    report = run_for_portfolio(stocks)
+    saved = advisor_store.append_report(uid, report)
+    return jsonify({"ok": True, "report": saved}), 200
+
+
+@app.get("/api/advisor/latest")
+def api_advisor_latest():
+    """最近一次儲存的建議報告。"""
+    uid, err = _require_user_id()
+    if err:
+        return err
+    rep = advisor_store.get_latest(uid)
+    if not rep:
+        return jsonify({"report": None}), 200
+    return jsonify({"report": rep}), 200
+
+
+@app.get("/api/advisor/history")
+def api_advisor_history():
+    """歷史建議列表（精簡，預設最近 10 筆）。"""
+    uid, err = _require_user_id()
+    if err:
+        return err
+    try:
+        limit = int(request.args.get("limit", "10"))
+    except ValueError:
+        limit = 10
+    reps = advisor_store.get_history(uid, limit=limit)
+    slim = [
+        {
+            "id": r.get("id"),
+            "generated_at": r.get("generated_at"),
+            "advice_date": r.get("advice_date"),
+            "advice_datetime_tw": r.get("advice_datetime_tw"),
+            "quote_fetched_at": r.get("quote_fetched_at"),
+            "summary": r.get("summary"),
+            "stock_count": len(r.get("stocks") or []),
+            "has_full_text": bool(r.get("advice_content")),
+        }
+        for r in reps
+    ]
+    return jsonify({"items": slim}), 200
 
 
 if __name__ == "__main__":

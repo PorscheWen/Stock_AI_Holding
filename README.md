@@ -1,6 +1,6 @@
 # Stock_AI_Holding
 
-獨立 **PWA**：紀錄與瀏覽股票持股、以 **截圖（Claude Vision）** 批次寫入持股，並可透過 **LINE Rich Menu** 以 URI 切換同一 PWA 畫面（`#home` / `#holdings` / `#screenshot` 等）。後端為 **Flask**，可部署於 **Render**（見 `render.yaml`）。
+獨立 **PWA**：首頁為 **Agent 操作建議**（一鍵分析、伺服器保留歷史）、紀錄持股、以 **截圖（Claude Vision）** 批次寫入，並可透過 **LINE Rich Menu** 切換畫面（`#home`＝建議頁 / `#holdings` / `#screenshot` 等）。後端為 **Flask**，可部署於 **Render**（見 `render.yaml`）。
 
 ## 線上環境（Render）
 
@@ -14,8 +14,9 @@
 
 ## 功能
 
+- **Agent 建議**：股價以 **Yahoo Finance（yfinance）** 公開 API 為主，**Stooq 日線 CSV** 交叉比對（可取得時）；紀錄 **建議日期／報價擷取時間（UTC）**、**整份 `advice_content` 與每檔內文** 至 `database/data/advisor_reports.json`（建議 Render **Persistent Disk** 掛載 `database/data`）  
 - **持股**：新增、列表（含即時股價）、單筆刪除、全部清空  
-- **截圖**：上傳券商持倉截圖 → 辨識 → 一鍵寫入 `database/data/portfolios.json`  
+- **截圖**：上傳券商持倉截圖 → 辨識 → 一鍵寫入持股  
 - **使用者識別**：預設本機隨機 `X-User-ID`；可在「設定」貼上 **LINE User ID** 與其他裝置或 Bot 共用同一資料區  
 
 ## 快速開始（本機）
@@ -53,11 +54,11 @@ python setup_rich_menu.py
 
 腳本會刪除舊選單、建立 **3×2** 選單圖、上傳並設為預設。六格對應：
 
-| 首頁 | 持股 | 截圖 |
+| 建議 | 持股 | 截圖 |
 |------|------|------|
-| 設定 | 說明 | 回首頁 |
+| 設定 | 說明 | 回建議 |
 
-（「回首頁」與「首頁」皆開 `#home`，方便從說明頁一鍵返回。）
+（「回建議」與「建議」皆開 `#home`＝ Agent 建議首頁。）
 
 ## API（皆需標頭 `X-User-ID`）
 
@@ -70,6 +71,9 @@ python setup_rich_menu.py
 | DELETE | `/api/portfolio` | 清空 |
 | POST | `/api/screenshot` | `multipart/form-data` 欄位 `image` |
 | POST | `/api/screenshot/import` | JSON：`{ "stocks": [...] }` |
+| POST | `/api/advisor/run` | 一鍵分析；股價來自 Yahoo（yfinance）並以 Stooq 比對；回傳含 `advice_date`、`quote_fetched_at`、`advice_content`（全文）、各檔 `advice_content`，並**儲存** |
+| GET | `/api/advisor/latest` | 讀取最近一次儲存之建議（同上欄位） |
+| GET | `/api/advisor/history?limit=10` | 建議歷史摘要（含 `advice_date`、`quote_fetched_at`、`has_full_text`） |
 
 ## 目錄結構
 
@@ -81,7 +85,9 @@ Stock_AI_Holding/
 ├── Dockerfile, docker-compose.yml
 ├── config/settings.py
 ├── database/portfolio_db.py
+├── database/advisor_store.py
 ├── agents/screenshot_agent.py
+├── agents/holding_advisor_agent.py
 ├── templates/pwa.html
 └── static/manifest.json, sw.js
 ```

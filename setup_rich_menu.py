@@ -59,12 +59,12 @@ def menu_cells():
     """每格：(emoji, 中文標題, PWA URI)。emoji 僅用於選單圖，不影響點擊區域。"""
     b = pwa_base()
     return [
-        ("🏠", "首頁", f"{b}#home"),
+        ("🤖", "建議", f"{b}#home"),
         ("📈", "持股", f"{b}#holdings"),
         ("📷", "截圖", f"{b}#screenshot"),
         ("⚙️", "設定", f"{b}#settings"),
         ("💡", "說明", f"{b}#help"),
-        ("🔙", "回首頁", f"{b}#home"),
+        ("🔙", "回建議", f"{b}#home"),
     ]
 
 

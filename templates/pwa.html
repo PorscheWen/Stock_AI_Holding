@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#3949ab" />
-  <title>持股 Holding</title>
+  <title>持股 Holding · Agent 建議</title>
   <link rel="manifest" href="/static/manifest.json" />
   <style>
     :root {
@@ -70,6 +70,12 @@
     nav.bottom span { font-size: 1.1rem; }
     #preview { max-width: 100%; border-radius: 8px; margin-top: 8px; display: none; }
     ul.help { margin: 0; padding-left: 1.1rem; color: var(--muted); font-size: 0.88rem; line-height: 1.6; }
+    .advisor-head { font-size: 1rem; font-weight: 700; margin: 0 0 6px; color: #c5cae9; }
+    .advisor-meta { font-size: 0.78rem; color: var(--muted); margin-bottom: 10px; }
+    .advisor-stock { border-top: 1px solid rgba(255,255,255,0.08); padding-top: 10px; margin-top: 10px; }
+    .advisor-stock:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
+    .tag { display: inline-block; font-size: 0.7rem; padding: 2px 8px; border-radius: 6px; background: rgba(102,187,106,0.25); color: #a5d6a7; margin-left: 6px; }
+    details.quick-add > summary { cursor: pointer; color: var(--muted); font-size: 0.85rem; margin-bottom: 8px; }
   </style>
 </head>
 <body>
@@ -80,8 +86,18 @@
   <main>
     <section id="view-home" class="view">
       <div class="card">
-        <p style="margin:0 0 8px;font-size:0.9rem;color:var(--muted);">
-          可手動新增持股，或使用底部「截圖」從券商 App 截圖匯入。Rich Menu 可快速切換畫面。
+        <div class="advisor-head">🤖 Agent 操作建議</div>
+        <p class="advisor-meta">
+          依您目前持股與即時價量規則產出參考建議；每次執行會<strong>儲存於伺服器</strong>（與 User ID 綁定），下次開啟仍會顯示上次結果。
+        </p>
+        <button type="button" id="btnAdvisorRun">一鍵啟動分析</button>
+        <div id="advisorRunMsg" class="msg"></div>
+        <div id="advisorPanel"></div>
+      </div>
+      <details class="card quick-add" open>
+        <summary>➕ 快速新增持股</summary>
+        <p style="margin:0 0 8px;font-size:0.82rem;color:var(--muted);">
+          亦可使用底部「截圖」從券商 App 匯入。Rich Menu「建議」即本頁。
         </p>
         <div class="row">
           <div><label>代碼</label><input id="sym" placeholder="2330.TW / AAPL" /></div>
@@ -93,7 +109,7 @@
         </div>
         <button type="button" id="btnAdd">新增持股</button>
         <div id="homeMsg" class="msg"></div>
-      </div>
+      </details>
     </section>
 
     <section id="view-holdings" class="view">
@@ -146,7 +162,7 @@
         <ul class="help">
           <li>部署 HTTPS 後，將 <code>APP_URL</code> 設為 <code>https://你的網域/app</code>。</li>
           <li>執行 <code>python setup_rich_menu.py</code> 上傳底部選單（需 Channel Access Token）。</li>
-          <li>Rich Menu 各格會開啟不同錨點（首頁 / 持股 / 截圖 / 設定 / 說明）。</li>
+          <li>Rich Menu 各格會開啟不同錨點（建議 / 持股 / 截圖 / 設定 / 說明）。</li>
           <li>截圖辨識需設定 <code>ANTHROPIC_API_KEY</code> 或 <code>CLAUDE_CODE_OAUTH_TOKEN</code>。</li>
         </ul>
       </div>
@@ -154,7 +170,7 @@
   </main>
 
   <nav class="bottom">
-    <a href="#home" data-view="home"><span>🏠</span>首頁</a>
+    <a href="#home" data-view="home"><span>🤖</span>建議</a>
     <a href="#holdings" data-view="holdings"><span>📋</span>持股</a>
     <a href="#screenshot" data-view="screenshot"><span>📷</span>截圖</a>
     <a href="#settings" data-view="settings"><span>⚙️</span>設定</a>
@@ -197,7 +213,85 @@
         a.classList.toggle("active", a.dataset.view === name);
       });
       if (name === "holdings") loadHoldings();
+      if (name === "home") loadAdvisorLatest();
     }
+
+    function renderAdvisorReport(rep) {
+      const panel = document.getElementById("advisorPanel");
+      if (!rep) {
+        panel.innerHTML = "<p class=\"advisor-meta\" style=\"margin-top:10px;\">尚無儲存建議，請按「一鍵啟動分析」（需先有持股）。</p>";
+        return;
+      }
+      const advDate = rep.advice_datetime_tw || rep.advice_date || rep.generated_at || "—";
+      const qf = rep.quote_fetched_at || rep.generated_at || "—";
+      const prov = rep.price_data_provider || "公開金融 API";
+      let html = "<div class=\"advisor-meta\">";
+      html += "<strong>建議日期／時間</strong>：" + escapeHtml(String(advDate)) + "<br>";
+      html += "<strong>報價擷取（UTC）</strong>：" + escapeHtml(String(qf)) + "<br>";
+      html += "<strong>價格來源</strong>：" + escapeHtml(String(prov));
+      html += "</div>";
+      html += "<p class=\"msg\" style=\"margin:8px 0;\">" + escapeHtml(rep.summary || "") + "</p>";
+      const stocks = rep.stocks || [];
+      for (const s of stocks) {
+        const pnl = s.pnl_pct != null ? fmt(s.pnl_pct) + "%" : "—";
+        const amt = s.pnl_amount != null ? fmt(s.pnl_amount) : "—";
+        const px = s.current_price != null ? fmt(s.current_price) : (s.last_price != null ? fmt(s.last_price) : "—");
+        const rsi = s.rsi != null ? String(s.rsi) : "—";
+        const stop = s.stop_hint != null ? fmt(s.stop_hint) : "—";
+        const bar = s.quote_bar_date || "—";
+        const cross = s.price_cross_ok === true ? "（Stooq 交叉比對：一致）" : s.price_cross_ok === false ? "（Stooq 交叉比對：價差較大）" : "";
+        html += "<div class=\"advisor-stock\">";
+        html += "<strong>" + escapeHtml(s.name || s.symbol) + "</strong> <span class=\"pill\">" + escapeHtml(s.symbol) + "</span>";
+        html += "<span class=\"tag\">" + escapeHtml(s.horizon || "") + "</span>";
+        html += "<div class=\"advisor-meta\" style=\"margin-top:6px;\">";
+        html += "參考價 " + px + " " + cross + " · K 棒／即時欄位日：" + escapeHtml(String(bar));
+        html += "<br>損益 " + amt + "（" + pnl + "） · RSI " + rsi + " · 參考停損 " + stop;
+        html += "</div>";
+        html += "<p style=\"margin:6px 0 0;font-size:0.86rem;line-height:1.45;\">" + escapeHtml(s.suggestion || "") + "</p>";
+        if (s.advice_content) {
+          html += "<details style=\"margin-top:8px;font-size:0.78rem;\"><summary>此檔完整建議內文（已存檔）</summary>";
+          html += "<pre style=\"white-space:pre-wrap;word-break:break-word;margin:8px 0 0;color:#b0bec5;font-size:0.75rem;\">";
+          html += escapeHtml(s.advice_content) + "</pre></details>";
+        }
+        html += "</div>";
+      }
+      if (rep.advice_content) {
+        html += "<details style=\"margin-top:12px;\"><summary class=\"advisor-meta\" style=\"cursor:pointer;\">📄 整份建議紀錄（含日期與全文，已存伺服器）</summary>";
+        html += "<pre style=\"white-space:pre-wrap;word-break:break-word;margin:8px 0 0;color:#b0bec5;font-size:0.76rem;max-height:280px;overflow:auto;\">";
+        html += escapeHtml(rep.advice_content) + "</pre></details>";
+      }
+      panel.innerHTML = html;
+    }
+
+    async function loadAdvisorLatest() {
+      const panel = document.getElementById("advisorPanel");
+      panel.innerHTML = "<p class=\"advisor-meta\">載入建議中…</p>";
+      try {
+        const r = await fetch("/api/advisor/latest", { headers: hdrOnly() });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error || r.statusText);
+        renderAdvisorReport(j.report);
+      } catch (e) {
+        panel.innerHTML = "<p class=\"msg err\">載入失敗：" + escapeHtml(e.message) + "</p>";
+      }
+    }
+
+    document.getElementById("btnAdvisorRun").onclick = async () => {
+      const msg = document.getElementById("advisorRunMsg");
+      msg.className = "msg";
+      msg.textContent = "分析中（可能需數十秒）…";
+      try {
+        const r = await fetch("/api/advisor/run", { method: "POST", headers: hdrJson(), body: JSON.stringify({}) });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error || r.statusText);
+        msg.className = "msg ok";
+        msg.textContent = "已完成並儲存。";
+        renderAdvisorReport(j.report);
+      } catch (e) {
+        msg.className = "msg err";
+        msg.textContent = "失敗：" + e.message;
+      }
+    };
 
     function route() {
       let h = (location.hash || "#home").replace(/^#/, "");
