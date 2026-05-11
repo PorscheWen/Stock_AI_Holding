@@ -19,10 +19,19 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Windows 主控台常為 cp950，避免 emoji 在 print 時觸發 UnicodeEncodeError
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except (AttributeError, OSError):
+        pass
+
 TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN") or os.getenv("CHANNEL_ACCESS_TOKEN", "")
 APP_URL = (os.getenv("APP_URL", "") or "").strip().rstrip("/")
 
 API = "https://api.line.me/v2/bot"
+# 上傳選單圖必須使用 data API（用 api.line.me 會回 404）
+API_DATA = "https://api-data.line.me/v2/bot"
 
 
 def _headers_json():
@@ -172,7 +181,7 @@ def main():
     print("  💾 預覽 static/rich_menu_preview.jpg")
 
     r2 = requests.post(
-        f"{API}/richmenu/{rid}/content",
+        f"{API_DATA}/richmenu/{rid}/content",
         headers=_headers_binary("image/jpeg"),
         data=jpeg,
         timeout=60,
