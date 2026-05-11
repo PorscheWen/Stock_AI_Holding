@@ -1,6 +1,16 @@
 # Stock_AI_Holding
 
-獨立 **PWA** 專案：紀錄與瀏覽股票持股、以 **截圖（Claude Vision）** 批次更新持股，並可透過 **LINE Rich Menu** 以不同連結切換同一 PWA 的畫面（`#home` / `#holdings` / `#screenshot` 等）。
+獨立 **PWA**：紀錄與瀏覽股票持股、以 **截圖（Claude Vision）** 批次寫入持股，並可透過 **LINE Rich Menu** 以 URI 切換同一 PWA 畫面（`#home` / `#holdings` / `#screenshot` 等）。後端為 **Flask**，可部署於 **Render**（見 `render.yaml`）。
+
+## 線上環境（Render）
+
+| 說明 | 網址 |
+|------|------|
+| 根路徑（JSON 導覽） | [https://stock-ai-holding.onrender.com/](https://stock-ai-holding.onrender.com/) |
+| PWA | [https://stock-ai-holding.onrender.com/app](https://stock-ai-holding.onrender.com/app) |
+| 健康檢查 | [https://stock-ai-holding.onrender.com/health](https://stock-ai-holding.onrender.com/health) |
+
+部署後請將 **`APP_URL`** 設為 `https://stock-ai-holding.onrender.com/app`（Rich Menu 與 HTTPS 規定）。
 
 ## 功能
 
@@ -8,7 +18,7 @@
 - **截圖**：上傳券商持倉截圖 → 辨識 → 一鍵寫入 `database/data/portfolios.json`  
 - **使用者識別**：預設本機隨機 `X-User-ID`；可在「設定」貼上 **LINE User ID** 與其他裝置或 Bot 共用同一資料區  
 
-## 快速開始
+## 快速開始（本機）
 
 ```bash
 cd Stock_AI_Holding
@@ -16,24 +26,24 @@ python -m venv .venv
 .venv\Scripts\activate   # Windows
 pip install -r requirements.txt
 copy .env.example .env
-# 編輯 .env：ANTHROPIC_API_KEY、APP_URL（部署後）
+# 編輯 .env：ANTHROPIC_API_KEY、APP_URL（部署後須為 https://…/app）
 python app.py
 ```
 
-瀏覽器開啟：`http://127.0.0.1:5000/app`
+瀏覽器開啟：`http://127.0.0.1:5000/app`（根路徑 `/` 僅回傳 JSON 導覽，非 PWA 頁面。）
 
 ## Render 部署
 
-1. 將此 repo 推上 GitHub，在 [Render](https://render.com) 建立 **Blueprint** 並選取含 `render.yaml` 的 repo，或手動建立 **Web Service**（Runtime：**Python 3**）。
-2. **Root Directory**：若 monorepo 才需填 `Stock_AI_Holding`；此資料夾若為獨立 repo 則留空。
+1. 將此 repo 推上 GitHub，在 [Render](https://render.com) 建立 **Blueprint** 並選取含 `render.yaml` 的 repo，或手動建立 **Web Service**（Runtime：**Python 3**）。  
+2. **Root Directory**：若 monorepo 才需填 `Stock_AI_Holding`；此 repo 為獨立專案則留空。  
 3. **Build Command**：`pip install -r requirements.txt`  
-   **Start Command**：`python app.py`（Render 會注入 `PORT`，`app.py` 已讀取。）
-4. **Environment**：於 Dashboard 設定與 `.env.example` 相同變數；`APP_URL` 請在首次部署取得網址後設為 `https://<服務名>.onrender.com/app`。
-5. **持久化**：免費方案重啟／重新部署後本機 JSON 可能清空；要長期保存持股檔請為該 Web Service 新增 **Persistent Disk**，掛載路徑設為 `database/data`（與 `portfolios.json` 所在目錄一致）。
+   **Start Command**：`python app.py`（Render 會注入 `PORT`，`app.py` 已讀取。）  
+4. **Environment**：於 Dashboard 設定與 `.env.example` 相同變數；`APP_URL` 在取得公開網址後設為 `https://<服務名>.onrender.com/app`（本 repo 預設服務名範例：`stock-ai-holding`）。  
+5. **持久化**：免費方案重啟／重新部署後本機 JSON 可能清空；要長期保存持股檔請為該 Web Service 新增 **Persistent Disk**，掛載路徑設為 `database/data`（與 `portfolios.json` 所在目錄一致）。  
 
 ## LINE Rich Menu
 
-1. 將服務部署到 **HTTPS**（如 Render、Cloud Run），取得 `https://你的網域/app`。  
+1. 服務須為 **HTTPS**（如 Render），PWA 路徑為 `https://你的網域/app`。  
 2. `.env` 設定 `LINE_CHANNEL_ACCESS_TOKEN` 與 `APP_URL`（完整含 `/app`）。  
 3. 執行：
 
@@ -66,7 +76,9 @@ python setup_rich_menu.py
 ```
 Stock_AI_Holding/
 ├── app.py                 # Flask：PWA + API
+├── render.yaml            # Render Blueprint（Web Service）
 ├── setup_rich_menu.py     # Rich Menu 部署
+├── Dockerfile, docker-compose.yml
 ├── config/settings.py
 ├── database/portfolio_db.py
 ├── agents/screenshot_agent.py
