@@ -1,0 +1,9 @@
+services:
+  holding:
+    build: .
+    ports:
+      - "5000:5000"
+    env_file:
+      - .env
+    volumes:
+      - ./database/data:/app/database/data

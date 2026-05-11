@@ -1,0 +1,196 @@
+#!/usr/bin/env python3
+"""
+LINE Rich Menu 部署：3×2 六格，以 URI 開啟 PWA 不同錨點（切換畫面）。
+
+環境變數：
+  LINE_CHANNEL_ACCESS_TOKEN（或 CHANNEL_ACCESS_TOKEN）
+  APP_URL — 完整 PWA 入口，例如 https://your-domain.com/app
+
+執行：python setup_rich_menu.py
+"""
+from __future__ import annotations
+
+import io
+import os
+import sys
+
+import requests
+from dotenv import load_dotenv
+
+load_dotenv()
+
+TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN") or os.getenv("CHANNEL_ACCESS_TOKEN", "")
+APP_URL = (os.getenv("APP_URL", "") or "").strip().rstrip("/")
+
+API = "https://api.line.me/v2/bot"
+
+
+def _headers_json():
+    return {"Authorization": f"Bearer {TOKEN}", "Content-Type": "application/json"}
+
+
+def _headers_binary(ct: str):
+    return {"Authorization": f"Bearer {TOKEN}", "Content-Type": ct}
+
+
+def pwa_base() -> str:
+    if not APP_URL:
+        sys.exit("❌ 請設定 APP_URL，例如 https://xxx.onrender.com/app")
+    if APP_URL.endswith("/app"):
+        return APP_URL
+    return APP_URL + "/app"
+
+
+def menu_cells():
+    b = pwa_base()
+    return [
+        ("首頁", f"{b}#home"),
+        ("持股", f"{b}#holdings"),
+        ("截圖", f"{b}#screenshot"),
+        ("設定", f"{b}#settings"),
+        ("說明", f"{b}#help"),
+        ("回首頁", f"{b}#home"),
+    ]
+
+
+def build_areas():
+    W, H = 2500, 1686
+    cw = W // 3
+    ch_top = H // 2
+    ch_bot = H - ch_top
+    cells = menu_cells()
+    areas = []
+    idx = 0
+    for row in range(2):
+        y = 0 if row == 0 else ch_top
+        height = ch_top if row == 0 else ch_bot
+        for col in range(3):
+            x = col * cw if col < 2 else 2 * cw
+            width = cw if col < 2 else (W - 2 * cw)
+            _title, uri = cells[idx]
+            idx += 1
+            areas.append(
+                {
+                    "bounds": {"x": x, "y": y, "width": width, "height": height},
+                    "action": {"type": "uri", "uri": uri},
+                }
+            )
+    return areas
+
+
+def draw_menu_jpeg() -> bytes:
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+    except ImportError:
+        sys.exit("❌ 請 pip install Pillow")
+
+    W, H = 2500, 1686
+    cw = W // 3
+    ch_top = H // 2
+    ch_bot = H - ch_top
+    img = Image.new("RGB", (W, H), "#0A0E1A")
+    draw = ImageDraw.Draw(img)
+
+    def font(sz: int):
+        for path in (
+            "C:/Windows/Fonts/msjhbd.ttc",
+            "C:/Windows/Fonts/msjh.ttc",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        ):
+            try:
+                return ImageFont.truetype(path, sz)
+            except OSError:
+                continue
+        return ImageFont.load_default()
+
+    f_lg, f_sm = font(52), font(28)
+    cells = menu_cells()
+    idx = 0
+    for row in range(2):
+        y0 = 0 if row == 0 else ch_top
+        h = ch_top if row == 0 else ch_bot
+        for col in range(3):
+            x0 = col * cw if col < 2 else 2 * cw
+            w = cw if col < 2 else (W - 2 * cw)
+            label, _uri = cells[idx]
+            idx += 1
+            draw.rectangle([x0, y0, x0 + w - 1, y0 + h - 1], outline="#3949AB", width=4)
+            cx, cy = x0 + w // 2, y0 + h // 2 - 20
+            draw.text((cx, cy), label, fill="#E8EAF6", font=f_lg, anchor="mm")
+            draw.text(
+                (cx, cy + 52),
+                "Stock Holding",
+                fill="#9FA8DA",
+                font=f_sm,
+                anchor="mm",
+            )
+
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=88)
+    return buf.getvalue()
+
+
+def delete_all_richmenus():
+    r = requests.get(f"{API}/richmenu/list", headers=_headers_json(), timeout=30)
+    r.raise_for_status()
+    for item in r.json().get("richmenus", []):
+        rid = item["richMenuId"]
+        requests.delete(f"{API}/richmenu/{rid}", headers=_headers_json(), timeout=30)
+        print(f"  🗑  刪除舊選單 {rid}")
+
+
+def main():
+    if not TOKEN:
+        sys.exit("❌ 請設定 LINE_CHANNEL_ACCESS_TOKEN（或 CHANNEL_ACCESS_TOKEN）")
+
+    print("\n[1/4] 清除既有 Rich Menu…")
+    try:
+        delete_all_richmenus()
+    except requests.HTTPError as e:
+        print(f"  （清除時）{e}")
+
+    body = {
+        "size": {"width": 2500, "height": 1686},
+        "selected": True,
+        "name": "StockHoldingPWA",
+        "chatBarText": "持股選單",
+        "areas": build_areas(),
+    }
+
+    print("\n[2/4] 建立 Rich Menu…")
+    r = requests.post(f"{API}/richmenu", headers=_headers_json(), json=body, timeout=30)
+    if not r.ok:
+        sys.exit(f"❌ 建立失敗 {r.status_code}: {r.text}")
+    rid = r.json()["richMenuId"]
+    print(f"  ✅ richMenuId = {rid}")
+
+    print("\n[3/4] 上傳選單圖…")
+    jpeg = draw_menu_jpeg()
+    os.makedirs("static", exist_ok=True)
+    with open("static/rich_menu_preview.jpg", "wb") as f:
+        f.write(jpeg)
+    print("  💾 預覽 static/rich_menu_preview.jpg")
+
+    r2 = requests.post(
+        f"{API}/richmenu/{rid}/content",
+        headers=_headers_binary("image/jpeg"),
+        data=jpeg,
+        timeout=60,
+    )
+    if not r2.ok:
+        sys.exit(f"❌ 上傳圖片失敗 {r2.status_code}: {r2.text}")
+
+    print("\n[4/4] 設為預設選單…")
+    r3 = requests.post(
+        f"{API}/user/all/richmenu/{rid}",
+        headers=_headers_json(),
+        timeout=30,
+    )
+    if not r3.ok:
+        sys.exit(f"❌ 設定預設失敗 {r3.status_code}: {r3.text}")
+
+    print("\n🎉 完成。請用手機開啟官方帳號查看底部選單。\n")
+
+
+if __name__ == "__main__":
+    main()

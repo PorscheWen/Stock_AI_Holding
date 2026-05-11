@@ -1,0 +1,12 @@
+.env
+.env.local
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+database/data/*.json
+static/rich_menu_preview.jpg
+.DS_Store
+Thumbs.db
