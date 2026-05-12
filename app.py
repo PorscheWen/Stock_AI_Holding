@@ -5,7 +5,7 @@ import logging
 import os
 
 from dotenv import load_dotenv
-from flask import Flask, jsonify, redirect, render_template, request, send_from_directory
+from flask import Flask, jsonify, make_response, redirect, render_template, request, send_from_directory
 import yfinance as yf
 
 from agents.screenshot_agent import ScreenshotAgent
@@ -44,12 +44,19 @@ def health():
 
 @app.get("/app")
 def pwa_page():
-    return render_template("pwa.html")
+    resp = make_response(render_template("pwa.html"))
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    resp.headers["Pragma"] = "no-cache"
+    resp.headers["Expires"] = "0"
+    return resp
 
 
 @app.get("/sw.js")
 def service_worker():
-    return send_from_directory("static", "sw.js", mimetype="application/javascript")
+    resp = send_from_directory("static", "sw.js", mimetype="application/javascript")
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
 
 
 @app.get("/api/portfolio")
