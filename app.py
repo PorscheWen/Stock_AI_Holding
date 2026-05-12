@@ -5,7 +5,7 @@ import logging
 import os
 
 from dotenv import load_dotenv
-from flask import Flask, jsonify, render_template, request, send_from_directory
+from flask import Flask, jsonify, redirect, render_template, request, send_from_directory
 import yfinance as yf
 
 from agents.screenshot_agent import ScreenshotAgent
@@ -34,16 +34,7 @@ def _require_user_id() -> tuple[str | None, tuple | None]:
 
 @app.get("/")
 def index():
-    return jsonify({
-        "service": "Stock_AI_Holding",
-        "pwa": "/app",
-        "health": "/health",
-        "advisor": {
-            "run": "POST /api/advisor/run",
-            "latest": "GET /api/advisor/latest",
-            "history": "GET /api/advisor/history?limit=10",
-        },
-    }), 200
+    return redirect("/app")
 
 
 @app.get("/health")
@@ -84,6 +75,7 @@ def api_portfolio_add():
         float(data.get("shares", 0)),
         float(data.get("avg_price", 0)),
         str(data.get("note", "")),
+        str(data.get("name", "")),
     )
     return jsonify({"success": ok, "symbol": symbol})
 

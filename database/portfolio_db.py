@@ -46,7 +46,7 @@ class PortfolioDB:
     
     # ── 使用者持股管理 ───────────────────────────────────
     def add_stock(self, user_id: str, symbol: str, shares: float = 0, 
-                  avg_price: float = 0, note: str = "") -> bool:
+                  avg_price: float = 0, note: str = "", name: str = "") -> bool:
         """
         新增持股
         
@@ -56,6 +56,7 @@ class PortfolioDB:
             shares: 持股數量
             avg_price: 平均成本
             note: 備註
+            name: 股票名稱 (選填)
         
         Returns:
             成功回傳 True
@@ -70,6 +71,7 @@ class PortfolioDB:
         
         data[user_id]["stocks"][symbol] = {
             "symbol": symbol,
+            "name": name,
             "shares": shares,
             "avg_price": avg_price,
             "note": note,
@@ -78,7 +80,7 @@ class PortfolioDB:
         }
         
         self._save(data)
-        logger.info(f"新增持股: user={user_id}, symbol={symbol}, shares={shares}")
+        logger.info(f"新增持股: user={user_id}, symbol={symbol}, name={name}, shares={shares}")
         return True
     
     def remove_stock(self, user_id: str, symbol: str) -> bool:
@@ -415,7 +417,7 @@ class PortfolioDB:
         
         Args:
             user_id: LINE 使用者 ID
-            stocks: 持股列表 [{"symbol": "2330.TW", "shares": 100, ...}, ...]
+            stocks: 持股列表 [{"symbol": "2330.TW", "name": "台積電", "shares": 100, ...}, ...]
         
         Returns:
             {"success": int, "failed": int, "errors": List[str]}
@@ -425,6 +427,7 @@ class PortfolioDB:
         for stock in stocks:
             try:
                 symbol = stock.get('symbol', '').strip().upper()
+                name = stock.get('name', '').strip()
                 shares = float(stock.get('shares', 0))
                 avg_price = float(stock.get('avg_price', 0))
                 note = stock.get('note', '').strip()
@@ -434,7 +437,7 @@ class PortfolioDB:
                     result["errors"].append(f"跳過空的股票代碼")
                     continue
                 
-                if self.add_stock(user_id, symbol, shares, avg_price, note):
+                if self.add_stock(user_id, symbol, shares, avg_price, note, name):
                     result["success"] += 1
                 else:
                     result["failed"] += 1
