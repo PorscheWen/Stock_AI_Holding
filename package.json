@@ -1,0 +1,7 @@
+{
+  "name": "stock-ai-holding",
+  "private": true,
+  "scripts": {
+    "setup-richmenu": "python setup_rich_menu.py"
+  }
+}

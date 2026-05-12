@@ -15,6 +15,8 @@ from typing import Any
 
 import yfinance as yf
 
+from stock_display_zh import resolve_stock_name_zh
+
 logger = logging.getLogger(__name__)
 
 QUOTE_PROVIDER_PRIMARY = "Yahoo Finance（yfinance 公開 API）"
@@ -112,6 +114,7 @@ def _analyze_one(
     avg_price: float,
     note: str,
     quote_fetched_at: str,
+    stored_name: str = "",
 ) -> dict[str, Any]:
     row: dict[str, Any] = {
         "symbol": symbol,
@@ -138,8 +141,7 @@ def _analyze_one(
     try:
         t = yf.Ticker(symbol)
         info = t.info or {}
-        name = info.get("shortName") or info.get("longName") or symbol
-        row["name"] = str(name)
+        row["name"] = resolve_stock_name_zh(symbol, yf_info=info, stored_name=stored_name)
 
         hist = t.history(period="4mo")
         yahoo_ref, y_bar, ccy = _yahoo_price_and_bar(t, hist)
@@ -317,6 +319,7 @@ def run_for_portfolio(stocks: list[dict]) -> dict[str, Any]:
                 float(s.get("avg_price") or 0),
                 str(s.get("note") or ""),
                 quote_fetched_at,
+                str(s.get("name") or ""),
             )
         )
 

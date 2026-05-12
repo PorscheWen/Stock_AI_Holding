@@ -479,9 +479,9 @@
     </main>
 
     <nav class="bottom">
-        <a href="#advisor" data-view="advisor"><span>🤖</span>建議</a>
-        <a href="#holdings" data-view="holdings"><span>📊</span>持股</a>
         <a href="#settings" data-view="settings"><span>⚙️</span>設定</a>
+        <a href="#holdings" data-view="holdings"><span>📊</span>持股</a>
+        <a href="#advisor" data-view="advisor"><span>🤖</span>建議</a>
     </nav>
 
     <script>
@@ -881,8 +881,29 @@
             });
         });
 
+        // LINE 內建瀏覽器常快取 SW；updateViaCache:none + 週期 update + 新 SW 接管後 reload
         if ("serviceWorker" in navigator) {
-            navigator.serviceWorker.register("/sw.js").catch(() => { });
+            let reloadOnController = false;
+            navigator.serviceWorker.addEventListener("controllerchange", () => {
+                if (reloadOnController) return;
+                reloadOnController = true;
+                window.location.reload();
+            });
+            navigator.serviceWorker
+                .register("/sw.js", { scope: "/", updateViaCache: "none" })
+                .then((reg) => {
+                    const ping = () => {
+                        try {
+                            reg.update();
+                        } catch (_) { }
+                    };
+                    document.addEventListener("visibilitychange", () => {
+                        if (document.visibilityState === "visible") ping();
+                    });
+                    window.addEventListener("pageshow", () => ping());
+                    ping();
+                })
+                .catch(() => { });
         }
 
         refreshUidLabel();

@@ -12,6 +12,7 @@ from agents.screenshot_agent import ScreenshotAgent
 from agents.holding_advisor_agent import run_for_portfolio
 from database.portfolio_db import PortfolioDB
 from database import advisor_store
+from stock_display_zh import resolve_stock_name_zh
 
 load_dotenv()
 
@@ -115,6 +116,7 @@ def api_portfolio_prices():
     for stock in stocks:
         symbol = stock["symbol"]
         entry = dict(stock)
+        stored_nm = str(stock.get("name") or "")
         try:
             info = yf.Ticker(symbol).info
             price = info.get("currentPrice") or info.get("regularMarketPrice") or 0
@@ -125,10 +127,15 @@ def api_portfolio_prices():
                 "current_price": round(float(price), 2),
                 "change": change,
                 "change_pct": pct,
-                "name": info.get("shortName") or info.get("longName", symbol),
+                "name": resolve_stock_name_zh(symbol, yf_info=info or {}, stored_name=stored_nm),
             })
         except Exception:
-            entry.update({"current_price": 0, "change": 0, "change_pct": 0, "name": symbol})
+            entry.update({
+                "current_price": 0,
+                "change": 0,
+                "change_pct": 0,
+                "name": resolve_stock_name_zh(symbol, yf_info=None, stored_name=stored_nm),
+            })
         results.append(entry)
     return jsonify({"stocks": results})
 
