@@ -11,6 +11,20 @@ from typing import Optional, List
 
 logger = logging.getLogger(__name__)
 
+# 持股分類：穩定獲利（長期核心）／短期持股（波段或交易）
+HOLDING_BUCKETS = frozenset({"stable_profit", "short_term"})
+
+
+def _normalize_bucket(raw: str | None) -> str:
+    v = (raw or "short_term").strip()
+    return v if v in HOLDING_BUCKETS else "short_term"
+
+
+def _normalize_stock_row(stock: dict) -> dict:
+    d = dict(stock)
+    d["holding_bucket"] = _normalize_bucket(d.get("holding_bucket"))
+    return d
+
 # 資料庫檔案路徑
 DB_DIR = Path("database/data")
 DB_FILE = DB_DIR / "portfolios.json"
@@ -45,8 +59,9 @@ class PortfolioDB:
             logger.error(f"儲存資料庫失敗: {e}")
     
     # ── 使用者持股管理 ───────────────────────────────────
-    def add_stock(self, user_id: str, symbol: str, shares: float = 0, 
-                  avg_price: float = 0, note: str = "", name: str = "") -> bool:
+    def add_stock(self, user_id: str, symbol: str, shares: float = 0,
+                  avg_price: float = 0, note: str = "", name: str = "",
+                  holding_bucket: str = "short_term") -> bool:
         """
         新增持股
         
@@ -57,7 +72,8 @@ class PortfolioDB:
             avg_price: 平均成本
             note: 備註
             name: 股票名稱 (選填)
-        
+            holding_bucket: stable_profit（穩定獲利）或 short_term（短期持股）
+
         Returns:
             成功回傳 True
         """
@@ -69,18 +85,21 @@ class PortfolioDB:
                 "stocks": {}
             }
         
+        bucket = _normalize_bucket(holding_bucket)
+
         data[user_id]["stocks"][symbol] = {
             "symbol": symbol,
             "name": name,
             "shares": shares,
             "avg_price": avg_price,
             "note": note,
+            "holding_bucket": bucket,
             "added_at": datetime.now().isoformat(),
             "updated_at": datetime.now().isoformat()
         }
-        
+
         self._save(data)
-        logger.info(f"新增持股: user={user_id}, symbol={symbol}, name={name}, shares={shares}")
+        logger.info(f"新增持股: user={user_id}, symbol={symbol}, name={name}, bucket={bucket}, shares={shares}")
         return True
     
     def remove_stock(self, user_id: str, symbol: str) -> bool:
@@ -121,7 +140,7 @@ class PortfolioDB:
             return []
         
         stocks = data[user_id]["stocks"]
-        return list(stocks.values())
+        return [_normalize_stock_row(v) for v in stocks.values()]
     
     def get_stock(self, user_id: str, symbol: str) -> Optional[dict]:
         """
@@ -139,7 +158,7 @@ class PortfolioDB:
         if user_id not in data or symbol not in data[user_id]["stocks"]:
             return None
         
-        return data[user_id]["stocks"][symbol]
+        return _normalize_stock_row(data[user_id]["stocks"][symbol])
     
     def get_all_symbols(self, user_id: str) -> list[str]:
         """
@@ -180,7 +199,7 @@ class PortfolioDB:
         Args:
             user_id: LINE 使用者 ID
             symbol: 股票代碼
-            **kwargs: 要更新的欄位 (shares, avg_price, note)
+            **kwargs: 要更新的欄位 (shares, avg_price, note, name, holding_bucket)
         
         Returns:
             成功回傳 True，失敗回傳 False
@@ -194,8 +213,11 @@ class PortfolioDB:
         stock = data[user_id]["stocks"][symbol]
         
         for key, value in kwargs.items():
-            if key in ["shares", "avg_price", "note"]:
-                stock[key] = value
+            if key in ["shares", "avg_price", "note", "name", "holding_bucket"]:
+                if key == "holding_bucket":
+                    stock[key] = _normalize_bucket(str(value))
+                else:
+                    stock[key] = value
         
         stock["updated_at"] = datetime.now().isoformat()
         
@@ -431,13 +453,14 @@ class PortfolioDB:
                 shares = float(stock.get('shares', 0))
                 avg_price = float(stock.get('avg_price', 0))
                 note = stock.get('note', '').strip()
-                
+                bucket = _normalize_bucket(stock.get("holding_bucket"))
+
                 if not symbol:
                     result["failed"] += 1
                     result["errors"].append(f"跳過空的股票代碼")
                     continue
                 
-                if self.add_stock(user_id, symbol, shares, avg_price, note, name):
+                if self.add_stock(user_id, symbol, shares, avg_price, note, name, bucket):
                     result["success"] += 1
                 else:
                     result["failed"] += 1

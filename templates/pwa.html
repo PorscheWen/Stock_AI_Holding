@@ -330,6 +330,15 @@
             border-color: var(--accent);
             background: rgba(92, 107, 192, 0.15);
         }
+
+        #shotTbl input,
+        #shotTbl select {
+            width: 100%;
+            min-width: 0;
+            padding: 6px 8px;
+            font-size: 0.8rem;
+            margin: 0;
+        }
     </style>
 </head>
 
@@ -380,6 +389,7 @@
                                 <tr>
                                     <th>代碼</th>
                                     <th>名稱</th>
+                                    <th>分類</th>
                                     <th>股數</th>
                                     <th>均價</th>
                                     <th>現價</th>
@@ -405,6 +415,15 @@
                         </div>
                         <div><label>平均成本</label><input id="manualAvgPrice" type="number" step="any" placeholder="0" />
                         </div>
+                    </div>
+                    <div class="row">
+                        <div><label>持股分類</label>
+                            <select id="manualBucket">
+                                <option value="short_term">短期持股</option>
+                                <option value="stable_profit">穩定獲利</option>
+                            </select>
+                        </div>
+                        <div style="flex:2; min-width:120px;"></div>
                     </div>
                     <div>
                         <label>備註</label>
@@ -442,6 +461,7 @@
                                     <tr>
                                         <th>代碼</th>
                                         <th>名稱</th>
+                                        <th>分類</th>
                                         <th>股數</th>
                                         <th>均價</th>
                                     </tr>
@@ -558,7 +578,8 @@
 
             const filtered = allStocks.filter(s =>
                 s.symbol.toLowerCase().includes(query) ||
-                (s.name && s.name.toLowerCase().includes(query))
+                (s.name && s.name.toLowerCase().includes(query)) ||
+                (s.holding_bucket && s.holding_bucket.toLowerCase().includes(query))
             );
 
             if (!filtered.length) {
@@ -572,16 +593,48 @@
             filtered.forEach(s => renderStockRow(tbody, s));
         });
 
+        function bucketLabel(b) {
+            return b === "stable_profit" ? "穩定獲利" : "短期持股";
+        }
+
+        async function patchStock(symbol, body) {
+            const r = await fetch("/api/portfolio/" + encodeURIComponent(symbol), {
+                method: "PATCH",
+                headers: hdrJson(),
+                body: JSON.stringify(body),
+            });
+            const j = await r.json();
+            if (!r.ok) throw new Error(j.error || "更新失敗");
+            return j;
+        }
+
         function renderStockRow(tbody, s) {
             const tr = document.createElement("tr");
+            const b = s.holding_bucket === "stable_profit" ? "stable_profit" : "short_term";
             tr.innerHTML = `
         <td><strong>${escapeHtml(s.symbol)}</strong></td>
         <td>${escapeHtml(s.name || "—")}</td>
+        <td>
+          <select data-patch="holding_bucket" data-sym="${escapeHtml(s.symbol)}" style="width:auto;min-width:7rem;">
+            <option value="short_term" ${b === "short_term" ? "selected" : ""}>短期持股</option>
+            <option value="stable_profit" ${b === "stable_profit" ? "selected" : ""}>穩定獲利</option>
+          </select>
+        </td>
         <td>${fmt(s.shares)}</td>
         <td>${fmt(s.avg_price)}</td>
         <td>${s.current_price != null ? fmt(s.current_price) : "—"}</td>
         <td><button type="button" class="danger" style="margin:0;padding:6px 8px;font-size:0.75rem;width:auto;" data-sym="${escapeHtml(s.symbol)}">刪</button></td>`;
             tr.querySelector("button").onclick = () => delStock(s.symbol);
+            const sel = tr.querySelector("select[data-patch]");
+            sel.onchange = async () => {
+                try {
+                    await patchStock(s.symbol, { holding_bucket: sel.value });
+                    s.holding_bucket = sel.value;
+                } catch (e) {
+                    alert(e.message);
+                    loadHoldings();
+                }
+            };
             tbody.appendChild(tr);
         }
 
@@ -644,6 +697,7 @@
                 shares: parseFloat(document.getElementById("manualShares").value) || 0,
                 avg_price: parseFloat(document.getElementById("manualAvgPrice").value) || 0,
                 note: document.getElementById("manualNote").value.trim(),
+                holding_bucket: document.getElementById("manualBucket").value || "short_term",
             };
 
             try {
@@ -660,6 +714,7 @@
                 document.getElementById("manualShares").value = "";
                 document.getElementById("manualAvgPrice").value = "";
                 document.getElementById("manualNote").value = "";
+                document.getElementById("manualBucket").value = "short_term";
 
                 // 切換到列表頁面
                 setTimeout(() => switchTab("list"), 1000);
@@ -668,6 +723,54 @@
                 msg.textContent = "❌ " + e.message;
             }
         };
+
+        function fmtRawForInput(n) {
+            if (n == null || n === "") return "";
+            const x = Number(n);
+            if (Number.isNaN(x)) return "";
+            return x === Math.floor(x) ? String(Math.floor(x)) : String(x);
+        }
+
+        function syncShotTableToModel() {
+            document.querySelectorAll("#shotTbl tr[data-shot-row]").forEach((tr) => {
+                const i = parseInt(tr.dataset.shotRow, 10);
+                const s = lastShotStocks[i];
+                if (!s) return;
+                let sym = tr.querySelector('[data-f="symbol"]').value.trim().toUpperCase();
+                if (/^\d{4,6}$/.test(sym)) sym = sym + ".TW";
+                s.symbol = sym;
+                s.name = tr.querySelector('[data-f="name"]').value.trim();
+                s.shares = parseFloat(tr.querySelector('[data-f="shares"]').value) || 0;
+                s.avg_price = parseFloat(tr.querySelector('[data-f="avg_price"]').value) || 0;
+                const b = tr.querySelector('[data-f="holding_bucket"]').value;
+                s.holding_bucket = b === "stable_profit" ? "stable_profit" : "short_term";
+            });
+        }
+
+        function renderShotTable() {
+            const tbl = document.getElementById("shotTbl");
+            tbl.innerHTML = "";
+            lastShotStocks.forEach((s, i) => {
+                if (!s.holding_bucket) s.holding_bucket = "short_term";
+                const tr = document.createElement("tr");
+                tr.dataset.shotRow = String(i);
+                const sym = escapeHtml(s.symbol || "");
+                const nm = escapeHtml(s.name || "");
+                const sp = fmtRawForInput(s.shares);
+                const ap = fmtRawForInput(s.avg_price);
+                const bsel = s.holding_bucket === "stable_profit" ? "stable_profit" : "short_term";
+                tr.innerHTML =
+                    '<td><input type="text" data-f="symbol" value="' + sym + '" /></td>' +
+                    '<td><input type="text" data-f="name" value="' + nm + '" /></td>' +
+                    '<td><select data-f="holding_bucket">' +
+                    '<option value="short_term"' + (bsel === "short_term" ? " selected" : "") + '>短期持股</option>' +
+                    '<option value="stable_profit"' + (bsel === "stable_profit" ? " selected" : "") + '>穩定獲利</option>' +
+                    "</select></td>" +
+                    '<td><input type="number" step="any" data-f="shares" value="' + escapeHtml(sp) + '" /></td>' +
+                    '<td><input type="number" step="any" data-f="avg_price" value="' + escapeHtml(ap) + '" /></td>';
+                tbl.appendChild(tr);
+            });
+        }
 
         // ====== 截圖上傳功能 ======
         let lastShotStocks = [];
@@ -734,17 +837,14 @@
                 if (!r.ok) throw new Error(j.error || "辨識失敗");
 
                 lastShotStocks = j.stocks || [];
+                lastShotStocks.forEach((x) => {
+                    if (!x.holding_bucket) x.holding_bucket = "short_term";
+                });
                 msg.className = "msg ok";
                 msg.textContent = "✅ " + (j.note || "辨識完成") +
                     (j.confidence != null ? "（信心度 " + Math.round((j.confidence <= 1 ? j.confidence * 100 : j.confidence)) + "%）" : "");
 
-                const tbl = document.getElementById("shotTbl");
-                tbl.innerHTML = "";
-                for (const s of lastShotStocks) {
-                    const tr = document.createElement("tr");
-                    tr.innerHTML = `<td>${escapeHtml(s.symbol)}</td><td>${escapeHtml(s.name || "—")}</td><td>${fmt(s.shares)}</td><td>${fmt(s.avg_price)}</td>`;
-                    tbl.appendChild(tr);
-                }
+                renderShotTable();
                 document.getElementById("shotResult").style.display = lastShotStocks.length ? "block" : "none";
             } catch (e) {
                 msg.className = "msg err";
@@ -756,6 +856,7 @@
 
         document.getElementById("btnImport").onclick = async () => {
             if (!lastShotStocks.length) return;
+            syncShotTableToModel();
             const r = await fetch("/api/screenshot/import", {
                 method: "POST",
                 headers: hdrJson(),
@@ -783,6 +884,20 @@
             html += "<strong>報價擷取（UTC）</strong>：" + escapeHtml(String(qf)) + "<br>";
             html += "<strong>價格來源</strong>：" + escapeHtml(String(prov));
             html += "</div>";
+            const tw = rep.tw_market_outlook;
+            if (tw && (tw.one_month_summary_zh || tw.bias_label_zh)) {
+                const pts = Array.isArray(tw.key_watchpoints_zh) ? tw.key_watchpoints_zh : [];
+                const ptHtml = pts.length ? "<ul style=\"margin:6px 0 0;padding-left:1.1rem;font-size:0.82rem;color:#b0bec5;\">" +
+                    pts.map((p) => "<li>" + escapeHtml(String(p)) + "</li>").join("") + "</ul>" : "";
+                html += "<div class=\"card\" style=\"margin-top:10px;background:rgba(26,35,126,0.28);\">";
+                html += "<div class=\"advisor-head\" style=\"font-size:0.95rem;\">📈 台股大盤 · 約一個月展望</div>";
+                html += "<p class=\"advisor-meta\" style=\"margin:4px 0;\">基調：<strong>" + escapeHtml(String(tw.bias_label_zh || "—")) +
+                    "</strong>（" + escapeHtml(String(tw.bias_one_month || "—")) + "）";
+                if (tw.confidence_0_to_1 != null) html += "　信心度 " + escapeHtml(String(tw.confidence_0_to_1));
+                html += "</p>";
+                html += "<p style=\"font-size:0.86rem;line-height:1.45;margin:6px 0;\">" + escapeHtml(String(tw.one_month_summary_zh || "")) + "</p>";
+                html += ptHtml + "</div>";
+            }
             html += "<p class=\"msg\" style=\"margin:8px 0;\">" + escapeHtml(rep.summary || "") + "</p>";
             const stocks = rep.stocks || [];
             for (const s of stocks) {
@@ -797,9 +912,16 @@
                 html += "<strong>" + escapeHtml(s.name || s.symbol) + "</strong> <span class=\"pill\">" + escapeHtml(s.symbol) + "</span>";
                 html += "<span class=\"tag\">" + escapeHtml(s.horizon || "") + "</span>";
                 html += "<div class=\"advisor-meta\" style=\"margin-top:6px;\">";
+                html += "分類：<strong>" + escapeHtml(bucketLabel(s.holding_bucket)) + "</strong> · ";
                 html += "參考價 " + px + " " + cross + " · K 棒／即時欄位日：" + escapeHtml(String(bar));
                 html += "<br>損益 " + amt + "（" + pnl + "） · RSI " + rsi + " · 參考停損 " + stop;
                 html += "</div>";
+                html += "<p style=\"margin:4px 0 0;font-size:0.8rem;color:#90a4ae;\">短線（對齊大盤）：" +
+                    escapeHtml(s.short_term_direction_zh || "—") + "</p>";
+                html += "<p style=\"margin:4px 0 0;font-size:0.84rem;line-height:1.45;\">" +
+                    escapeHtml(s.short_term_trade_hint_zh || "") + "</p>";
+                html += "<p style=\"margin:4px 0 0;font-size:0.84rem;line-height:1.45;color:#b2dfdb;\">長期穩定獲利視角：" +
+                    escapeHtml(s.long_term_stable_advice_zh || "—") + "</p>";
                 html += "<p style=\"margin:6px 0 0;font-size:0.86rem;line-height:1.45;\">" + escapeHtml(s.suggestion || "") + "</p>";
                 if (s.advice_content) {
                     html += "<details style=\"margin-top:8px;font-size:0.78rem;\"><summary>此檔完整建議內文（已存檔）</summary>";

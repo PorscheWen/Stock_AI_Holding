@@ -4,7 +4,8 @@ Holding PWA — Agent 操作建議
   - 主來源：Yahoo Finance（yfinance，公開行情）
   - 輔助確認：Stooq 日線 CSV（無需 API Key，僅作價差檢核）
 
-每筆報告含建議日期、各檔建議內文與整份 advice_content，供 advisor_store 持久化。
+每筆報告含台股大盤約一個月展望、依大盤基調之個股短線建議、穩定獲利／短期持股分類之長期視角，
+以及建議日期、各檔建議內文與整份 advice_content，供 advisor_store 持久化。
 """
 from __future__ import annotations
 
@@ -15,12 +16,108 @@ from typing import Any
 
 import yfinance as yf
 
+from agents.tw_market_agent import run_one_month_tw_outlook
 from stock_display_zh import resolve_stock_name_zh
 
 logger = logging.getLogger(__name__)
 
 QUOTE_PROVIDER_PRIMARY = "Yahoo Finance（yfinance 公開 API）"
 QUOTE_PROVIDER_CROSS = "Stooq（日線 CSV 公開資料）"
+
+
+def _holding_bucket(raw: str | None) -> str:
+    v = (raw or "short_term").strip()
+    return v if v in ("stable_profit", "short_term") else "short_term"
+
+
+def _append_tw_market_hints(
+    row: dict[str, Any],
+    *,
+    tw_bias: str,
+    holding_bucket: str,
+) -> None:
+    """依台股大盤一個月基調與持股分類，補上短線方向與長期穩定獲利建議文案。"""
+    sym = str(row.get("symbol", "")).strip().upper()
+    is_tw = sym.endswith(".TW") or sym.endswith(".TWO")
+    rsi = row.get("rsi")
+    pnl = row.get("pnl_pct")
+    bias = tw_bias if tw_bias in ("up", "down", "neutral") else "neutral"
+
+    if not is_tw:
+        row["short_term_direction_zh"] = "中性（非台股）"
+        row["short_term_trade_hint_zh"] = (
+            "台股大盤情境主要適用台股標的；美股請以美股大盤、個股基本面與技術面為主，勿過度依台股單一情境操作。"
+        )
+        if holding_bucket == "stable_profit":
+            row["long_term_stable_advice_zh"] = (
+                "長期配置請以產業前景、財務體質與股息政策為核心，並留意匯率對報酬的影響。"
+            )
+        else:
+            row["long_term_stable_advice_zh"] = (
+                "此檔為「短期持股」分類；若屬長期核心部位，建議改標「穩定獲利」以利對齊存股型檢視。"
+            )
+        return
+
+    if bias == "up":
+        row["short_term_direction_zh"] = "短線偏多"
+        if rsi is not None and rsi >= 72:
+            row["short_term_trade_hint_zh"] = (
+                "大盤一個月基調偏多，但此檔 RSI 偏高，短線不宜追高；可續抱者請守停利或等待拉回再評估加碼。"
+            )
+        elif rsi is not None and rsi <= 38:
+            row["short_term_trade_hint_zh"] = (
+                "大盤偏多、個股相對弱勢或超跌，短線可觀察是否跌深反彈，若未站回關鍵價勿急於攤平。"
+            )
+        elif pnl is not None and pnl <= -10:
+            row["short_term_trade_hint_zh"] = (
+                "大盤偏多環境下此檔仍明顯虧損，短線若有反彈可視為調整部位結構的機會，並嚴守停損紀律。"
+            )
+        elif pnl is not None and pnl >= 20:
+            row["short_term_trade_hint_zh"] = (
+                "大盤偏多且個股獲利豐厚，短線可分批停利、鎖定獲利，保留核心部位順勢操作。"
+            )
+        else:
+            row["short_term_trade_hint_zh"] = (
+                "大盤基調偏多，短線可順勢操作並留意量能；跌破短均或停損價應執行紀律。"
+            )
+    elif bias == "down":
+        row["short_term_direction_zh"] = "短線偏空"
+        if rsi is not None and rsi <= 32:
+            row["short_term_trade_hint_zh"] = (
+                "大盤基調偏空且個股 RSI 偏低，短線防禦為先，反彈宜減碼或觀望，避免空手接刀。"
+            )
+        elif pnl is not None and pnl >= 15:
+            row["short_term_trade_hint_zh"] = (
+                "大盤偏空但個股仍有獲利，短線建議保守停利、降低曝險，保留現金等待落底訊號。"
+            )
+        else:
+            row["short_term_trade_hint_zh"] = (
+                "大盤基調偏空，短線以控管風險為主，避免重壓單一產業，停損與總曝險宜從嚴。"
+            )
+    else:
+        row["short_term_direction_zh"] = "短線中性"
+        row["short_term_trade_hint_zh"] = (
+            "大盤一個月展望中性整理，個股短線宜區間操作或觀望突破／跌破後再跟進。"
+        )
+
+    if holding_bucket == "stable_profit":
+        if bias == "up":
+            row["long_term_stable_advice_zh"] = (
+                "此檔列為「穩定獲利」：長期以配息與競爭力為軸，大盤偏多時可續抱核心、僅在估值明顯過熱或基本面轉弱時減碼。"
+            )
+        elif bias == "down":
+            row["long_term_stable_advice_zh"] = (
+                "此檔列為「穩定獲利」：長期仍看公司現金流與產業地位；大盤偏空時可檢視是否趁低加碼核心標的，"
+                "但須分散產業並避免單一槓桿過大。"
+            )
+        else:
+            row["long_term_stable_advice_zh"] = (
+                "此檔列為「穩定獲利」：長線建議定期定額或再平衡，不因短線中性整理頻繁進出，聚焦體質與股息再投資。"
+            )
+    else:
+        row["long_term_stable_advice_zh"] = (
+            "此檔為「短期持股」：長期存股型建議請改標「穩定獲利」；目前以波段與停損停利紀律為主。"
+        )
 
 
 def _stooq_symbol(sym: str) -> str | None:
@@ -115,9 +212,13 @@ def _analyze_one(
     note: str,
     quote_fetched_at: str,
     stored_name: str = "",
+    holding_bucket: str = "short_term",
+    tw_bias: str = "neutral",
 ) -> dict[str, Any]:
+    bucket = _holding_bucket(holding_bucket)
     row: dict[str, Any] = {
         "symbol": symbol,
+        "holding_bucket": bucket,
         "shares": shares,
         "avg_price": avg_price,
         "note": note or "",
@@ -163,6 +264,7 @@ def _analyze_one(
 
         if price is None:
             row["suggestion"] = "無法自公開 API 取得有效股價，請稍後再試或確認代碼。"
+            _append_tw_market_hints(row, tw_bias=tw_bias, holding_bucket=bucket)
             row["advice_content"] = _stock_advice_text(row)
             return row
 
@@ -242,6 +344,7 @@ def _analyze_one(
         logger.warning("holding_advisor %s: %s", symbol, e)
         row["suggestion"] = f"分析失敗：{e}"
 
+    _append_tw_market_hints(row, tw_bias=tw_bias, holding_bucket=bucket)
     row["advice_content"] = _stock_advice_text(row)
     return row
 
@@ -267,11 +370,20 @@ def _stock_advice_text(row: dict[str, Any]) -> str:
         lines.append(f"參考損益：{row.get('pnl_amount')}（{row.get('pnl_pct')}%）")
     lines.append(f"RSI：{row.get('rsi')}　量比：{row.get('volume_ratio')}　參考停損價：{row.get('stop_hint')}")
     lines.append(f"持有期間建議：{row.get('horizon')}")
+    lines.append(f"持股分類：{'穩定獲利' if row.get('holding_bucket') == 'stable_profit' else '短期持股'}")
+    lines.append(f"短線方向（對齊台股大盤一個月基調）：{row.get('short_term_direction_zh', '—')}")
+    lines.append(f"短線操作參考：{row.get('short_term_trade_hint_zh', '—')}")
+    lines.append(f"長期穩定獲利／存股視角：{row.get('long_term_stable_advice_zh', '—')}")
     lines.append(f"建議說明：{row.get('suggestion', '')}")
     return "\n".join(lines)
 
 
-def _full_report_advice_content(summary: str, items: list[dict[str, Any]], meta: dict[str, Any]) -> str:
+def _full_report_advice_content(
+    summary: str,
+    items: list[dict[str, Any]],
+    meta: dict[str, Any],
+    tw_outlook: dict[str, Any] | None,
+) -> str:
     tw = meta.get("advice_datetime_tw")
     header = "\n".join(
         [
@@ -282,12 +394,26 @@ def _full_report_advice_content(summary: str, items: list[dict[str, Any]], meta:
             f"報價擷取時間（UTC）：{meta.get('quote_fetched_at', '—')}",
             f"價格資料來源：{meta.get('price_data_provider', '—')}",
             "",
-            "【摘要】",
-            summary,
-            "",
         ]
     )
-    blocks = [header]
+    tw_block = ""
+    if tw_outlook:
+        lbl = tw_outlook.get("bias_label_zh") or "—"
+        summ = tw_outlook.get("one_month_summary_zh") or ""
+        conf = tw_outlook.get("confidence_0_to_1")
+        conf_s = f"{float(conf):.2f}" if conf is not None else "—"
+        pts = tw_outlook.get("key_watchpoints_zh") or []
+        pt_lines = "\n".join(f"  · {p}" for p in pts) if isinstance(pts, list) else str(pts)
+        tw_block = (
+            "\n【台股大盤 · 約一個月展望（Agent 推估）】\n"
+            f"基調：{lbl}（bias={tw_outlook.get('bias_one_month', '—')}）　信心度：{conf_s}\n"
+            f"{summ}\n"
+            f"觀察重點：\n{pt_lines}\n"
+            "（以上為情境推估，非投資要約；實際下單請以自身風險承受度為準。）\n"
+        )
+    blocks = [
+        header + tw_block + "【摘要】\n" + summary + "\n",
+    ]
     for i, it in enumerate(items, 1):
         blocks.append(f"---------- 個股 {i} ----------")
         blocks.append(it.get("advice_content") or "")
@@ -296,6 +422,11 @@ def _full_report_advice_content(summary: str, items: list[dict[str, Any]], meta:
 
 def run_for_portfolio(stocks: list[dict]) -> dict[str, Any]:
     stocks = stocks or []
+    tw_outlook = run_one_month_tw_outlook()
+    tw_bias = str(tw_outlook.get("bias_one_month") or "neutral").lower()
+    if tw_bias not in ("up", "down", "neutral"):
+        tw_bias = "neutral"
+
     now = datetime.now(timezone.utc)
     quote_fetched_at = now.isoformat(timespec="seconds")
     advice_date_utc = now.strftime("%Y-%m-%d")
@@ -320,18 +451,25 @@ def run_for_portfolio(stocks: list[dict]) -> dict[str, Any]:
                 str(s.get("note") or ""),
                 quote_fetched_at,
                 str(s.get("name") or ""),
+                str(s.get("holding_bucket") or "short_term"),
+                tw_bias,
             )
         )
 
     up = sum(1 for x in items if (x.get("pnl_pct") or 0) > 0)
     down = sum(1 for x in items if (x.get("pnl_pct") or 0) < 0)
+    bias_zh = tw_outlook.get("bias_label_zh") or tw_bias
     summary = (
         f"共 {len(items)} 檔；參考獲利檔 {up}、虧損檔 {down}。"
+        f" 台股大盤約一個月基調（Agent）：{bias_zh}。"
         " 股價來自 Yahoo Finance（yfinance）公開行情，並於可行時以 Stooq 日線交叉比對；"
         "實際下單請以券商成交為準。非投資要約。"
     )
     if not items:
         summary = "尚無持股，請先新增或匯入持股後再執行分析。"
+
+    tw_report = dict(tw_outlook)
+    tw_report.pop("raw_model", None)
 
     meta = {
         "advice_date_utc": advice_date_utc,
@@ -340,10 +478,10 @@ def run_for_portfolio(stocks: list[dict]) -> dict[str, Any]:
         "quote_fetched_at": quote_fetched_at,
         "price_data_provider": f"{QUOTE_PROVIDER_PRIMARY}；交叉檢核：{QUOTE_PROVIDER_CROSS}（可取得時）",
     }
-    advice_content = _full_report_advice_content(summary, items, meta)
+    advice_content = _full_report_advice_content(summary, items, meta, tw_report)
 
     return {
-        "agent": "holding_advisor_v2",
+        "agent": "holding_advisor_v3",
         "generated_at": quote_fetched_at,
         "advice_date": advice_date_utc,
         "advice_date_local": advice_date_local,
@@ -354,4 +492,5 @@ def run_for_portfolio(stocks: list[dict]) -> dict[str, Any]:
         "summary": summary,
         "advice_content": advice_content,
         "stocks": items,
+        "tw_market_outlook": tw_report,
     }

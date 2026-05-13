@@ -84,8 +84,40 @@ def api_portfolio_add():
         float(data.get("avg_price", 0)),
         str(data.get("note", "")),
         str(data.get("name", "")),
+        str(data.get("holding_bucket", "short_term")),
     )
     return jsonify({"success": ok, "symbol": symbol})
+
+
+@app.patch("/api/portfolio/<symbol>")
+def api_portfolio_patch(symbol: str):
+    """更新單筆持股（股數、均價、備註、名稱、分類）。"""
+    uid, err = _require_user_id()
+    if err:
+        return err
+    sym = symbol.strip().upper()
+    data = request.get_json(force=True) or {}
+    updates: dict = {}
+    if "shares" in data:
+        try:
+            updates["shares"] = float(data["shares"])
+        except (TypeError, ValueError):
+            return jsonify({"error": "invalid shares"}), 400
+    if "avg_price" in data:
+        try:
+            updates["avg_price"] = float(data["avg_price"])
+        except (TypeError, ValueError):
+            return jsonify({"error": "invalid avg_price"}), 400
+    if "note" in data:
+        updates["note"] = str(data.get("note") or "")
+    if "name" in data:
+        updates["name"] = str(data.get("name") or "")
+    if "holding_bucket" in data:
+        updates["holding_bucket"] = str(data.get("holding_bucket") or "short_term")
+    if not updates:
+        return jsonify({"error": "no updatable fields"}), 400
+    ok = db.update_stock(uid, sym, **updates)
+    return jsonify({"success": ok, "symbol": sym})
 
 
 @app.delete("/api/portfolio/<symbol>")
