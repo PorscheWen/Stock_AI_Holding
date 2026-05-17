@@ -120,6 +120,31 @@ def _append_tw_market_hints(
         )
 
 
+def _bucket_strategy_summary_zh(row: dict[str, Any]) -> str:
+    """依持股分類提供明確策略摘要，便於前端直接顯示。"""
+    bucket = _holding_bucket(row.get("holding_bucket"))
+    pnl = row.get("pnl_pct")
+    rsi = row.get("rsi")
+    stop_hint = row.get("stop_hint")
+    direction = row.get("short_term_direction_zh") or "短線中性"
+
+    if bucket == "stable_profit":
+        if pnl is not None and pnl >= 25:
+            return "長期核心部位：獲利偏大，可小幅分批落袋並維持核心持有；仍以再平衡與產業分散為主。"
+        if pnl is not None and pnl <= -12:
+            return "長期核心部位：目前回撤較深，先檢查基本面是否轉弱；若僅循環回檔可採分批檢視，不做情緒性砍倉。"
+        return "長期核心部位：以定期投入、再平衡與基本面追蹤為主，減少短線頻繁進出。"
+
+    stop_s = f"{stop_hint}" if stop_hint is not None else "參考停損價"
+    if pnl is not None and pnl >= 15:
+        return f"短期交易部位：目前獲利可觀，建議分批停利並上移停損（{stop_s}）保護成果。"
+    if pnl is not None and pnl <= -8:
+        return f"短期交易部位：當前壓力較大，應嚴守停損（{stop_s}）與部位上限，避免無計畫攤平。"
+    if rsi is not None and rsi >= 72:
+        return f"短期交易部位：{direction}但 RSI 偏高，不宜追價；宜等回測或明確突破後再進場。"
+    return f"短期交易部位：以波段節奏與紀律交易為主，依趨勢與停損（{stop_s}）調整部位。"
+
+
 def _stooq_symbol(sym: str) -> str | None:
     u = sym.strip().upper()
     if u.endswith(".TW"):
@@ -345,6 +370,7 @@ def _analyze_one(
         row["suggestion"] = f"分析失敗：{e}"
 
     _append_tw_market_hints(row, tw_bias=tw_bias, holding_bucket=bucket)
+    row["bucket_strategy_zh"] = _bucket_strategy_summary_zh(row)
     row["advice_content"] = _stock_advice_text(row)
     return row
 
@@ -374,6 +400,7 @@ def _stock_advice_text(row: dict[str, Any]) -> str:
     lines.append(f"短線方向（對齊台股大盤一個月基調）：{row.get('short_term_direction_zh', '—')}")
     lines.append(f"短線操作參考：{row.get('short_term_trade_hint_zh', '—')}")
     lines.append(f"長期穩定獲利／存股視角：{row.get('long_term_stable_advice_zh', '—')}")
+    lines.append(f"分類策略建議：{row.get('bucket_strategy_zh', '—')}")
     lines.append(f"建議說明：{row.get('suggestion', '')}")
     return "\n".join(lines)
 

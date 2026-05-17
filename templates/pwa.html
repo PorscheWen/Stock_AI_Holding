@@ -454,6 +454,19 @@
                     <div id="shotMsg" class="msg"></div>
 
                     <div id="shotResult" style="display:none;">
+                    <div class="row" style="margin: 8px 0 10px;">
+                        <div>
+                            <label>匯入分類快速套用</label>
+                            <select id="shotBulkBucket">
+                                <option value="">不變更（保留逐筆）</option>
+                                <option value="short_term">全部改為短期持股</option>
+                                <option value="stable_profit">全部改為穩定獲利（長期）</option>
+                            </select>
+                        </div>
+                        <div style="align-self:end;">
+                            <button type="button" class="secondary" id="btnApplyShotBucket" style="margin-top:0;">套用到全部匯入列</button>
+                        </div>
+                    </div>
                         <p class="pill" id="confPill"></p>
                         <div style="overflow-x:auto; margin-top: 12px;">
                             <table>
@@ -772,6 +785,12 @@
             });
         }
 
+        function applyShotBucketToAll(bucket) {
+            const normalized = bucket === "stable_profit" ? "stable_profit" : "short_term";
+            lastShotStocks.forEach((s) => { s.holding_bucket = normalized; });
+            renderShotTable();
+        }
+
         // ====== 截圖上傳功能 ======
         let lastShotStocks = [];
         const uploadArea = document.getElementById("uploadArea");
@@ -869,6 +888,15 @@
             switchTab("list");
         };
 
+        document.getElementById("btnApplyShotBucket").onclick = () => {
+            const selected = document.getElementById("shotBulkBucket").value;
+            if (!selected) {
+                alert("請先選擇要套用的分類");
+                return;
+            }
+            applyShotBucketToAll(selected);
+        };
+
         // ====== AI 建議功能 ======
         function renderAdvisorReport(rep) {
             const panel = document.getElementById("advisorPanel");
@@ -922,6 +950,8 @@
                     escapeHtml(s.short_term_trade_hint_zh || "") + "</p>";
                 html += "<p style=\"margin:4px 0 0;font-size:0.84rem;line-height:1.45;color:#b2dfdb;\">長期穩定獲利視角：" +
                     escapeHtml(s.long_term_stable_advice_zh || "—") + "</p>";
+                html += "<p style=\"margin:4px 0 0;font-size:0.84rem;line-height:1.45;color:#ffe082;\">分類策略建議：" +
+                    escapeHtml(s.bucket_strategy_zh || "—") + "</p>";
                 html += "<p style=\"margin:6px 0 0;font-size:0.86rem;line-height:1.45;\">" + escapeHtml(s.suggestion || "") + "</p>";
                 if (s.advice_content) {
                     html += "<details style=\"margin-top:8px;font-size:0.78rem;\"><summary>此檔完整建議內文（已存檔）</summary>";

@@ -13,11 +13,40 @@ logger = logging.getLogger(__name__)
 
 # 持股分類：穩定獲利（長期核心）／短期持股（波段或交易）
 HOLDING_BUCKETS = frozenset({"stable_profit", "short_term"})
+LONG_TERM_BUCKET_ALIASES = frozenset({
+    "stable_profit",
+    "long_term",
+    "long",
+    "stable",
+    "長期",
+    "長線",
+    "穩定獲利",
+    "穩定",
+})
+SHORT_TERM_BUCKET_ALIASES = frozenset({
+    "short_term",
+    "short",
+    "trade",
+    "短期",
+    "短線",
+    "波段",
+    "交易",
+})
 
 
 def _normalize_bucket(raw: str | None) -> str:
-    v = (raw or "short_term").strip()
-    return v if v in HOLDING_BUCKETS else "short_term"
+    raw_v = (raw or "").strip()
+    if not raw_v:
+        return "short_term"
+
+    v = raw_v.lower().replace("-", "_").replace(" ", "_")
+    if v in HOLDING_BUCKETS:
+        return v
+    if v in LONG_TERM_BUCKET_ALIASES or raw_v in LONG_TERM_BUCKET_ALIASES:
+        return "stable_profit"
+    if v in SHORT_TERM_BUCKET_ALIASES or raw_v in SHORT_TERM_BUCKET_ALIASES:
+        return "short_term"
+    return "short_term"
 
 
 def _normalize_stock_row(stock: dict) -> dict:
@@ -231,10 +260,10 @@ class PortfolioDB:
         """
         從 CSV 檔案匯入持股
         
-        CSV 格式：symbol,shares,avg_price,note
+        CSV 格式：symbol,shares,avg_price,note,name,holding_bucket
         範例：
-        2330.TW,100,580,台積電
-        AAPL,50,185,蘋果
+        2330.TW,100,580,台積電,台積電,stable_profit
+        AAPL,50,185,蘋果,Apple,short_term
         
         Args:
             user_id: LINE 使用者 ID
@@ -263,16 +292,18 @@ class PortfolioDB:
                 for row in reader:
                     try:
                         symbol = row.get('symbol', '').strip().upper()
+                        name = row.get('name', '').strip()
                         shares = float(row.get('shares', 0))
                         avg_price = float(row.get('avg_price', 0))
                         note = row.get('note', '').strip()
+                        bucket = _normalize_bucket(row.get('holding_bucket'))
                         
                         if not symbol:
                             result["failed"] += 1
                             result["errors"].append(f"跳過空的股票代碼")
                             continue
                         
-                        if self.add_stock(user_id, symbol, shares, avg_price, note):
+                        if self.add_stock(user_id, symbol, shares, avg_price, note, name, bucket):
                             result["success"] += 1
                         else:
                             result["failed"] += 1
@@ -297,8 +328,8 @@ class PortfolioDB:
         
         JSON 格式：
         [
-            {"symbol": "2330.TW", "shares": 100, "avg_price": 580, "note": "台積電"},
-            {"symbol": "AAPL", "shares": 50, "avg_price": 185, "note": "蘋果"}
+            {"symbol": "2330.TW", "shares": 100, "avg_price": 580, "note": "台積電", "name": "台積電", "holding_bucket": "stable_profit"},
+            {"symbol": "AAPL", "shares": 50, "avg_price": 185, "note": "蘋果", "name": "Apple", "holding_bucket": "short_term"}
         ]
         
         Args:
@@ -332,16 +363,18 @@ class PortfolioDB:
             for stock in stocks:
                 try:
                     symbol = stock.get('symbol', '').strip().upper()
+                    name = stock.get('name', '').strip()
                     shares = float(stock.get('shares', 0))
                     avg_price = float(stock.get('avg_price', 0))
                     note = stock.get('note', '').strip()
+                    bucket = _normalize_bucket(stock.get('holding_bucket'))
                     
                     if not symbol:
                         result["failed"] += 1
                         result["errors"].append(f"跳過空的股票代碼")
                         continue
                     
-                    if self.add_stock(user_id, symbol, shares, avg_price, note):
+                    if self.add_stock(user_id, symbol, shares, avg_price, note, name, bucket):
                         result["success"] += 1
                     else:
                         result["failed"] += 1
