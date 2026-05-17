@@ -907,10 +907,14 @@
             const advDate = rep.advice_datetime_tw || rep.advice_date || rep.generated_at || "—";
             const qf = rep.quote_fetched_at || rep.generated_at || "—";
             const prov = rep.price_data_provider || "公開金融 API";
+            const sv = rep.strategy_version || "—";
+            const avgScore = rep.avg_strategy_score != null ? String(rep.avg_strategy_score) : "—";
             let html = "<div class=\"advisor-meta\">";
             html += "<strong>建議日期／時間</strong>：" + escapeHtml(String(advDate)) + "<br>";
             html += "<strong>報價擷取（UTC）</strong>：" + escapeHtml(String(qf)) + "<br>";
-            html += "<strong>價格來源</strong>：" + escapeHtml(String(prov));
+            html += "<strong>價格來源</strong>：" + escapeHtml(String(prov)) + "<br>";
+            html += "<strong>策略版本</strong>：" + escapeHtml(String(sv)) + " · ";
+            html += "<strong>平均策略分數</strong>：" + escapeHtml(String(avgScore));
             html += "</div>";
             const tw = rep.tw_market_outlook;
             if (tw && (tw.one_month_summary_zh || tw.bias_label_zh)) {
@@ -935,6 +939,9 @@
                 const rsi = s.rsi != null ? String(s.rsi) : "—";
                 const stop = s.stop_hint != null ? fmt(s.stop_hint) : "—";
                 const bar = s.quote_bar_date || "—";
+                const sc = s.strategy_score != null ? String(s.strategy_score) : "—";
+                const act = s.strategy_action || "—";
+                const pos = s.position_suggest_pct != null ? String(s.position_suggest_pct) + "%" : "—";
                 const cross = s.price_cross_ok === true ? "（Stooq 交叉比對：一致）" : s.price_cross_ok === false ? "（Stooq 交叉比對：價差較大）" : "";
                 html += "<div class=\"advisor-stock\">";
                 html += "<strong>" + escapeHtml(s.name || s.symbol) + "</strong> <span class=\"pill\">" + escapeHtml(s.symbol) + "</span>";
@@ -943,6 +950,7 @@
                 html += "分類：<strong>" + escapeHtml(bucketLabel(s.holding_bucket)) + "</strong> · ";
                 html += "參考價 " + px + " " + cross + " · K 棒／即時欄位日：" + escapeHtml(String(bar));
                 html += "<br>損益 " + amt + "（" + pnl + "） · RSI " + rsi + " · 參考停損 " + stop;
+                html += "<br>量化分數 " + escapeHtml(sc) + "/100 · 動作 " + escapeHtml(act) + " · 建議比重 " + escapeHtml(pos);
                 html += "</div>";
                 html += "<p style=\"margin:4px 0 0;font-size:0.8rem;color:#90a4ae;\">短線（對齊大盤）：" +
                     escapeHtml(s.short_term_direction_zh || "—") + "</p>";

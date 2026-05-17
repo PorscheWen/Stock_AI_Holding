@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 QUOTE_PROVIDER_PRIMARY = "Yahoo Finance（yfinance 公開 API）"
 QUOTE_PROVIDER_CROSS = "Stooq（日線 CSV 公開資料）"
+STRATEGY_VERSION = "v1.1"
 
 
 def _holding_bucket(raw: str | None) -> str:
@@ -143,6 +144,125 @@ def _bucket_strategy_summary_zh(row: dict[str, Any]) -> str:
     if rsi is not None and rsi >= 72:
         return f"短期交易部位：{direction}但 RSI 偏高，不宜追價；宜等回測或明確突破後再進場。"
     return f"短期交易部位：以波段節奏與紀律交易為主，依趨勢與停損（{stop_s}）調整部位。"
+
+
+def _clamp(v: float, lo: float, hi: float) -> float:
+    return max(lo, min(hi, v))
+
+
+def _attach_strategy_fields(row: dict[str, Any], tw_bias: str) -> None:
+    """
+    依長短期分類產生可量化策略欄位：
+    - strategy_score: 0~100
+    - strategy_action: 加碼 / 續抱 / 觀望 / 減碼 / 停損/退出
+    - position_suggest_pct: 建議資金比重（單檔）
+    """
+    bucket = _holding_bucket(row.get("holding_bucket"))
+    pnl = row.get("pnl_pct")
+    rsi = row.get("rsi")
+    vr = row.get("volume_ratio")
+    cross_ok = row.get("price_cross_ok")
+    bias = tw_bias if tw_bias in ("up", "down", "neutral") else "neutral"
+
+    score = 50.0 if bucket == "stable_profit" else 45.0
+
+    # 台股大盤基調對應分數
+    if bias == "up":
+        score += 8.0 if bucket == "stable_profit" else 10.0
+    elif bias == "down":
+        score -= 8.0 if bucket == "stable_profit" else 10.0
+
+    if pnl is not None:
+        if bucket == "stable_profit":
+            score += _clamp(float(pnl) / 4.0, -12.0, 12.0)
+        else:
+            score += _clamp(float(pnl) / 3.0, -15.0, 15.0)
+
+    if rsi is not None:
+        rv = float(rsi)
+        if bucket == "stable_profit":
+            if 35 <= rv <= 70:
+                score += 6.0
+            elif rv >= 78 or rv <= 28:
+                score -= 6.0
+        else:
+            if 45 <= rv <= 65:
+                score += 8.0
+            elif rv >= 72:
+                score -= 8.0
+            elif rv <= 32:
+                score -= 6.0
+
+    if vr is not None:
+        vv = float(vr)
+        if bucket == "stable_profit":
+            if 0.7 <= vv <= 1.6:
+                score += 2.0
+            elif vv > 2.2:
+                score -= 2.0
+        else:
+            if 1.1 <= vv <= 2.0:
+                score += 5.0
+            elif vv <= 0.6:
+                score -= 4.0
+
+    if cross_ok is False:
+        score -= 8.0
+
+    score = _clamp(score, 0.0, 100.0)
+    score_i = int(round(score))
+
+    if bucket == "stable_profit":
+        if score_i >= 72:
+            action = "加碼"
+        elif score_i >= 55:
+            action = "續抱"
+        elif score_i >= 40:
+            action = "觀望"
+        else:
+            action = "減碼"
+
+        if score_i >= 80:
+            pos = 35
+        elif score_i >= 72:
+            pos = 30
+        elif score_i >= 60:
+            pos = 25
+        elif score_i >= 50:
+            pos = 20
+        elif score_i >= 40:
+            pos = 15
+        else:
+            pos = 10
+    else:
+        if score_i >= 75:
+            action = "加碼"
+        elif score_i >= 60:
+            action = "續抱"
+        elif score_i >= 45:
+            action = "觀望"
+        elif score_i >= 30:
+            action = "減碼"
+        else:
+            action = "停損/退出"
+
+        if score_i >= 85:
+            pos = 25
+        elif score_i >= 75:
+            pos = 20
+        elif score_i >= 65:
+            pos = 15
+        elif score_i >= 55:
+            pos = 10
+        elif score_i >= 45:
+            pos = 8
+        else:
+            pos = 5
+
+    row["strategy_version"] = STRATEGY_VERSION
+    row["strategy_score"] = score_i
+    row["strategy_action"] = action
+    row["position_suggest_pct"] = pos
 
 
 def _stooq_symbol(sym: str) -> str | None:
@@ -290,6 +410,7 @@ def _analyze_one(
         if price is None:
             row["suggestion"] = "無法自公開 API 取得有效股價，請稍後再試或確認代碼。"
             _append_tw_market_hints(row, tw_bias=tw_bias, holding_bucket=bucket)
+            _attach_strategy_fields(row, tw_bias)
             row["advice_content"] = _stock_advice_text(row)
             return row
 
@@ -371,6 +492,7 @@ def _analyze_one(
 
     _append_tw_market_hints(row, tw_bias=tw_bias, holding_bucket=bucket)
     row["bucket_strategy_zh"] = _bucket_strategy_summary_zh(row)
+    _attach_strategy_fields(row, tw_bias)
     row["advice_content"] = _stock_advice_text(row)
     return row
 
@@ -401,6 +523,13 @@ def _stock_advice_text(row: dict[str, Any]) -> str:
     lines.append(f"短線操作參考：{row.get('short_term_trade_hint_zh', '—')}")
     lines.append(f"長期穩定獲利／存股視角：{row.get('long_term_stable_advice_zh', '—')}")
     lines.append(f"分類策略建議：{row.get('bucket_strategy_zh', '—')}")
+    lines.append(
+        "策略量化（"
+        f"{row.get('strategy_version', STRATEGY_VERSION)}）："
+        f"分數 {row.get('strategy_score', '—')} / 100，"
+        f"動作 {row.get('strategy_action', '—')}，"
+        f"建議單檔比重 {row.get('position_suggest_pct', '—')}%"
+    )
     lines.append(f"建議說明：{row.get('suggestion', '')}")
     return "\n".join(lines)
 
@@ -485,12 +614,15 @@ def run_for_portfolio(stocks: list[dict]) -> dict[str, Any]:
 
     up = sum(1 for x in items if (x.get("pnl_pct") or 0) > 0)
     down = sum(1 for x in items if (x.get("pnl_pct") or 0) < 0)
+    avg_score = round(sum(float(x.get("strategy_score") or 0) for x in items) / len(items), 1) if items else None
     bias_zh = tw_outlook.get("bias_label_zh") or tw_bias
     summary = (
         f"共 {len(items)} 檔；參考獲利檔 {up}、虧損檔 {down}。"
         f" 台股大盤約一個月基調（Agent）：{bias_zh}。"
-        " 股價來自 Yahoo Finance（yfinance）公開行情，並於可行時以 Stooq 日線交叉比對；"
-        "實際下單請以券商成交為準。非投資要約。"
+        f" 策略版本 {STRATEGY_VERSION}"
+        + (f"，平均策略分數 {avg_score}。" if avg_score is not None else "。")
+        + " 股價來自 Yahoo Finance（yfinance）公開行情，並於可行時以 Stooq 日線交叉比對；"
+        + "實際下單請以券商成交為準。非投資要約。"
     )
     if not items:
         summary = "尚無持股，請先新增或匯入持股後再執行分析。"
@@ -516,6 +648,8 @@ def run_for_portfolio(stocks: list[dict]) -> dict[str, Any]:
         "advice_date_utc": advice_date_utc,
         "quote_fetched_at": quote_fetched_at,
         "price_data_provider": meta["price_data_provider"],
+        "strategy_version": STRATEGY_VERSION,
+        "avg_strategy_score": avg_score,
         "summary": summary,
         "advice_content": advice_content,
         "stocks": items,
