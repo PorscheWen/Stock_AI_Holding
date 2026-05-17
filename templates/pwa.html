@@ -498,6 +498,7 @@
                 <label>LINE User ID（與 Rich Menu / 其他服務一致時請貼上）</label>
                 <input id="lineUid" placeholder="留空則使用本機隨機 ID" />
                 <button type="button" id="btnSaveUid">💾 儲存</button>
+                <button type="button" id="btnClearHoldingsCache" class="secondary">🧹 清除本機持股快取</button>
                 <p class="msg" style="color:var(--muted);font-size:0.82rem;">
                     隨機 ID 僅存在此裝置。若要在手機與電腦共用同一組持股，請在各裝置設定相同的 User ID。
                 </p>
@@ -1040,8 +1041,11 @@
 
         document.getElementById("btnAdvisorRun").onclick = async () => {
             const msg = document.getElementById("advisorRunMsg");
+            const panel = document.getElementById("advisorPanel");
             msg.className = "msg";
             msg.textContent = "📊 分析中（會自動略過股數 <= 1 的持股，可能需數十秒）…";
+            // 啟動新分析前，先清掉舊建議，避免新舊內容混在一起。
+            panel.innerHTML = "<p class=\"advisor-meta\">已清除上次建議，正在產生新報告…</p>";
             try {
                 const r = await fetch("/api/advisor/run", { method: "POST", headers: hdrJson(), body: JSON.stringify({}) });
                 const j = await r.json();
@@ -1062,6 +1066,10 @@
             else localStorage.removeItem(LINE_UID_KEY);
             refreshUidLabel();
             alert("✅ 已儲存");
+        };
+        document.getElementById("btnClearHoldingsCache").onclick = () => {
+            localStorage.removeItem(HOLDINGS_CACHE_KEY);
+            alert("✅ 已清除本機持股快取");
         };
 
         function refreshUidLabel() {
