@@ -576,6 +576,37 @@ def _full_report_advice_content(
     return "\n".join(blocks).strip()
 
 
+def _build_quick_action_zh(items: list[dict[str, Any]], tw_bias: str) -> str:
+    """分析報告前置：簡短可執行操作建議。"""
+    if not items:
+        return "目前沒有可分析持股，先新增或匯入持股後再執行策略判斷。"
+
+    score_vals = [float(x.get("strategy_score") or 0) for x in items]
+    avg_score = sum(score_vals) / len(score_vals) if score_vals else 0.0
+    add_cnt = sum(1 for x in items if x.get("strategy_action") == "加碼")
+    cut_cnt = sum(1 for x in items if x.get("strategy_action") in ("減碼", "停損/退出"))
+
+    if avg_score >= 70:
+        lead = "整體偏強，優先續抱與分批加碼高分標的。"
+    elif avg_score >= 55:
+        lead = "整體中性偏多，以續抱為主、僅對強勢標的小幅加碼。"
+    elif avg_score >= 40:
+        lead = "整體偏觀望，先控管部位，等待更明確趨勢再加碼。"
+    else:
+        lead = "整體偏弱，先降風險，優先處理低分與弱勢部位。"
+
+    bias_hint = {
+        "up": "大盤基調偏多，避免追高，採分批進出。",
+        "down": "大盤基調偏空，現金比重應提高，停損要更嚴格。",
+        "neutral": "大盤基調中性，建議區間操作與嚴守紀律。",
+    }.get(tw_bias, "大盤訊號中性，建議保守分批。")
+
+    return (
+        f"{lead} 目前加碼候選 {add_cnt} 檔、減碼/退出候選 {cut_cnt} 檔。"
+        f" {bias_hint}"
+    )
+
+
 def run_for_portfolio(stocks: list[dict]) -> dict[str, Any]:
     stocks = stocks or []
     tw_outlook = run_one_month_tw_outlook()
@@ -616,6 +647,7 @@ def run_for_portfolio(stocks: list[dict]) -> dict[str, Any]:
     down = sum(1 for x in items if (x.get("pnl_pct") or 0) < 0)
     avg_score = round(sum(float(x.get("strategy_score") or 0) for x in items) / len(items), 1) if items else None
     bias_zh = tw_outlook.get("bias_label_zh") or tw_bias
+    quick_action_zh = _build_quick_action_zh(items, tw_bias)
     summary = (
         f"共 {len(items)} 檔；參考獲利檔 {up}、虧損檔 {down}。"
         f" 台股大盤約一個月基調（Agent）：{bias_zh}。"
@@ -650,6 +682,7 @@ def run_for_portfolio(stocks: list[dict]) -> dict[str, Any]:
         "price_data_provider": meta["price_data_provider"],
         "strategy_version": STRATEGY_VERSION,
         "avg_strategy_score": avg_score,
+        "quick_action_zh": quick_action_zh,
         "summary": summary,
         "advice_content": advice_content,
         "stocks": items,

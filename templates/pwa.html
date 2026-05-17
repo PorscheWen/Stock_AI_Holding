@@ -91,8 +91,7 @@
             gap: 8px;
             margin-bottom: 16px;
             border-bottom: 2px solid rgba(255, 255, 255, 0.08);
-            overflow-x: auto;
-            -webkit-overflow-scrolling: touch;
+            overflow: hidden;
         }
 
         .tab-btn {
@@ -106,6 +105,10 @@
             border-bottom: 2px solid transparent;
             margin-bottom: -2px;
             white-space: nowrap;
+            flex: 1 1 0;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
             transition: all 0.2s;
         }
 
@@ -520,6 +523,7 @@
     <script>
         const UID_KEY = "holding_random_uid";
         const LINE_UID_KEY = "holding_line_user_id";
+        const HOLDINGS_CACHE_KEY = "holding_stocks_cache_v1";
 
         function randomUid() {
             return "pwa_" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
@@ -543,6 +547,27 @@
         }
         function hdrOnly() {
             return { "X-User-ID": getUserId() };
+        }
+
+        function saveHoldingsToLocal(stocks) {
+            const payload = {
+                saved_at: new Date().toISOString(),
+                user_id: getUserId(),
+                stocks: Array.isArray(stocks) ? stocks : [],
+            };
+            localStorage.setItem(HOLDINGS_CACHE_KEY, JSON.stringify(payload));
+        }
+
+        function loadHoldingsFromLocal() {
+            const raw = localStorage.getItem(HOLDINGS_CACHE_KEY);
+            if (!raw) return null;
+            try {
+                const parsed = JSON.parse(raw);
+                if (!parsed || !Array.isArray(parsed.stocks)) return null;
+                return parsed;
+            } catch (_) {
+                return null;
+            }
         }
 
         // ====== Tab 切換功能 ======
@@ -662,6 +687,7 @@
                 const j = await r.json();
                 if (!r.ok) throw new Error(j.error || r.statusText);
                 allStocks = j.stocks || [];
+                saveHoldingsToLocal(allStocks);
 
                 if (!allStocks.length) {
                     msg.textContent = "尚無持股，請使用「手動新增」或「截圖新增」功能加入持股。";
@@ -670,7 +696,16 @@
 
                 allStocks.forEach(s => renderStockRow(tbody, s));
             } catch (e) {
-                msg.textContent = "載入失敗：" + e.message;
+                const cached = loadHoldingsFromLocal();
+                if (cached && Array.isArray(cached.stocks) && cached.stocks.length) {
+                    allStocks = cached.stocks;
+                    allStocks.forEach((s) => renderStockRow(tbody, s));
+                    const cachedAt = cached.saved_at ? new Date(cached.saved_at).toLocaleString() : "未知時間";
+                    msg.textContent = "目前離線，已載入本機快取持股（" + cachedAt + "）";
+                    msg.className = "msg";
+                    return;
+                }
+                msg.textContent = "載入失敗：" + e.message + "（且無本機快取可回填）";
                 msg.className = "msg err";
             }
         }
@@ -916,6 +951,20 @@
             html += "<strong>策略版本</strong>：" + escapeHtml(String(sv)) + " · ";
             html += "<strong>平均策略分數</strong>：" + escapeHtml(String(avgScore));
             html += "</div>";
+            if (rep.quick_action_zh) {
+                html += "<div class=\"card\" style=\"margin-top:8px;background:rgba(102,187,106,0.12);border-color:rgba(102,187,106,0.35);\">";
+                html += "<div class=\"advisor-head\" style=\"font-size:0.92rem;margin-bottom:4px;\">⚡ 簡短操作建議</div>";
+                html += "<p style=\"margin:0;font-size:0.86rem;line-height:1.45;\">" + escapeHtml(String(rep.quick_action_zh)) + "</p>";
+                html += "</div>";
+            }
+            const flt = rep.analysis_filter;
+            if (flt) {
+                html += "<p class=\"advisor-meta\" style=\"margin-top:6px;\">";
+                html += "分析過濾：僅分析股數 > 1（總 " + escapeHtml(String(flt.input_count || 0)) +
+                    " 檔，納入 " + escapeHtml(String(flt.analyzed_count || 0)) +
+                    "，略過 " + escapeHtml(String(flt.skipped_count || 0)) + "）";
+                html += "</p>";
+            }
             const tw = rep.tw_market_outlook;
             if (tw && (tw.one_month_summary_zh || tw.bias_label_zh)) {
                 const pts = Array.isArray(tw.key_watchpoints_zh) ? tw.key_watchpoints_zh : [];
@@ -992,7 +1041,7 @@
         document.getElementById("btnAdvisorRun").onclick = async () => {
             const msg = document.getElementById("advisorRunMsg");
             msg.className = "msg";
-            msg.textContent = "📊 分析中（可能需數十秒）…";
+            msg.textContent = "📊 分析中（會自動略過股數 <= 1 的持股，可能需數十秒）…";
             try {
                 const r = await fetch("/api/advisor/run", { method: "POST", headers: hdrJson(), body: JSON.stringify({}) });
                 const j = await r.json();

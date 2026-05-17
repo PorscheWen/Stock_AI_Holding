@@ -205,7 +205,26 @@ def api_advisor_run():
     if err:
         return err
     stocks = db.get_portfolio(uid)
-    report = run_for_portfolio(stocks)
+    eligible = []
+    skipped_symbols: list[str] = []
+    for s in stocks:
+        try:
+            shares = float(s.get("shares") or 0)
+        except (TypeError, ValueError):
+            shares = 0.0
+        if shares <= 1:
+            skipped_symbols.append(str(s.get("symbol") or ""))
+            continue
+        eligible.append(s)
+
+    report = run_for_portfolio(eligible)
+    report["analysis_filter"] = {
+        "rule": "shares > 1",
+        "input_count": len(stocks),
+        "analyzed_count": len(eligible),
+        "skipped_count": len(skipped_symbols),
+        "skipped_symbols": [x for x in skipped_symbols if x],
+    }
     saved = advisor_store.append_report(uid, report)
     return jsonify({"ok": True, "report": saved}), 200
 
