@@ -126,11 +126,27 @@ class ScreenshotAgent:
             return result
 
         except Exception as e:
-            logger.error(f"[Screenshot] 辨識失敗: {e}")
+            error_msg = str(e).lower()
+            error_type = type(e).__name__
+            
+            # 檢查是否為 API token 或 rate limit 問題
+            if "rate" in error_msg or "429" in error_msg or "quota" in error_msg:
+                logger.error(
+                    f"[Screenshot] Anthropic API 限制: {e} (錯誤類型: {error_type})\n"
+                    f"請檢查：\n"
+                    f"  1. ANTHROPIC_API_KEY 是否有效\n"
+                    f"  2. API token 額度是否足夠\n"
+                    f"  3. 是否請求過於頻繁"
+                )
+                note = f"Anthropic API 限制：{str(e)}\n請檢查 API token 額度或稍後再試。"
+            else:
+                logger.error(f"[Screenshot] 辨識失敗: {e} (錯誤類型: {error_type})")
+                note = f"辨識失敗：{str(e)}"
+            
             return {
                 "stocks": [],
                 "confidence": 0,
-                "note": f"辨識失敗：{str(e)}",
+                "note": note,
                 "raw": "",
             }
 

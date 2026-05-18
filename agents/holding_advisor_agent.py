@@ -23,7 +23,8 @@ from stock_display_zh import resolve_stock_name_zh
 logger = logging.getLogger(__name__)
 
 # 請求間隔（秒），避免 API rate limit
-REQUEST_DELAY = 0.5
+# 若仍遇到 rate limit 錯誤，可調整為 1.5 或 2.0
+REQUEST_DELAY = 1.0
 
 QUOTE_PROVIDER_PRIMARY = "Yahoo Finance（yfinance 公開 API）"
 QUOTE_PROVIDER_CROSS = "Stooq（日線 CSV 公開資料）"
@@ -495,15 +496,34 @@ def _analyze_one(
 
     except Exception as e:
         error_msg = str(e).lower()
-        logger.warning("holding_advisor %s: %s", symbol, e)
+        error_type = type(e).__name__
         
         # 檢查是否為 rate limit 錯誤
-        if "429" in error_msg or "too many requests" in error_msg or "rate limit" in error_msg:
+        is_rate_limit = (
+            "429" in error_msg or 
+            "too many requests" in error_msg or 
+            "rate limit" in error_msg or
+            "ratelimit" in error_msg
+        )
+        
+        if is_rate_limit:
+            logger.error(
+                "[RATE LIMIT] %s: %s (錯誤類型: %s)\n"
+                "可能來源：\n"
+                "  1. Yahoo Finance API 請求過於頻繁\n"
+                "  2. Anthropic API token 額度不足或請求過快\n"
+                "建議：增加 REQUEST_DELAY 或減少持股數量",
+                symbol, e, error_type
+            )
             row["suggestion"] = (
-                f"API 請求過於頻繁（{symbol}），請稍後再試。"
-                "建議：減少持股數量或等待數分鐘後重新執行。"
+                f"API 請求過於頻繁（{symbol}）。\n"
+                "可能原因：\n"
+                "1. Yahoo Finance 免費 API 達到請求上限\n"
+                "2. Anthropic API token 額度不足或請求過快\n"
+                "建議：等待 5-10 分鐘後重試，或減少一次分析的持股數量。"
             )
         else:
+            logger.warning("holding_advisor %s: %s (錯誤類型: %s)", symbol, e, error_type)
             row["suggestion"] = f"分析失敗：{e}"
 
     _append_tw_market_hints(row, tw_bias=tw_bias, holding_bucket=bucket)

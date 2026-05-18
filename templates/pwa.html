@@ -391,9 +391,14 @@
                         </div>
                     </div>
                     <div class="row" style="margin-bottom:10px;">
-                        <button type="button" class="secondary" id="btnReload">🔄 重新載入</button>
-                        <button type="button" class="danger" id="btnClear">🗑️ 清空全部</button>
+                        <button type="button" class="secondary" id="btnImportHoldingsList">📤 匯入</button>
+                        <button type="button" class="secondary" id="btnExportHoldingsList">📥 匯出</button>
                     </div>
+                    <div class="row" style="margin-bottom:10px;">
+                        <button type="button" class="danger" id="btnClear">🗑️ 清空全部</button>
+                        <button type="button" class="secondary" id="btnReload">🔄 重新載入</button>
+                    </div>
+                    <input type="file" id="fileImportHoldingsList" accept=".json" style="display:none;" />
                     <div id="stockChart"></div>
                     <div id="holdMsg" class="msg"></div>
                     <div style="overflow-x:auto;">
@@ -519,6 +524,11 @@
                 <h3 style="margin-top:0; color: var(--text);">💾 持股資料備份</h3>
                 <div class="row" style="margin-bottom: 10px;">
                     <button type="button" id="btnExportHoldings">📥 匯出持股</button>
+                    <div id="lastImportInfo"
+                        style="font-size: 0.75rem; color: var(--muted); margin-top: 12px; padding: 8px; background: rgba(0,0,0,0.2); border-radius: 6px; display: none;">
+                        <strong>上次匯入記錄：</strong><br>
+                        <span id="lastImportDetails"></span>
+                    </div>
                     <button type="button" class="secondary" id="btnImportHoldings">📤 匯入持股</button>
                 </div>
                 <input type="file" id="fileImportHoldings" accept=".json" style="display:none;" />
@@ -550,6 +560,8 @@
         const UID_KEY = "holding_random_uid";
         const LINE_UID_KEY = "holding_line_user_id";
         const HOLDINGS_CACHE_KEY = "holding_stocks_cache_v1";
+        const LAST_EXPORT_PATH_KEY = "holding_last_export_path";
+        const LAST_IMPORT_INFO_KEY = "holding_last_import_info";
 
         function randomUid() {
             return "pwa_" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
@@ -1198,46 +1210,106 @@
             localStorage.removeItem(HOLDINGS_CACHE_KEY);
             alert("✅ 已清除本機持股快取");
         };
+
         // ====== 匯入/匯出功能 ======
-        document.getElementById("btnExportHoldings").onclick = async () => {
+        async function exportHoldings(msgElementId = "importMsg") {
             try {
                 const r = await fetch("/api/portfolio/export", { headers: hdrOnly() });
                 const j = await r.json();
                 if (!r.ok) throw new Error(j.error || "匯出失敗");
 
+                const defaultFilename = `持股備份_${new Date().toISOString().slice(0, 10)}.json`;
                 const dataStr = JSON.stringify(j.stocks, null, 2);
+
+                // 嘗試使用 File System Access API（較新的瀏覽器支援）
+                if ('showSaveFilePicker' in window) {
+                    try {
+                        const opts = {
+                            suggestedName: defaultFilename,
+                            types: [{
+                                description: 'JSON 檔案',
+                                accept: { 'application/json': ['.json'] }
+                            }]
+                        };
+
+                        // 記錄上次匯出路徑
+                        const lastPath = localStorage.getItem(LAST_EXPORT_PATH_KEY);
+                        if (lastPath) {
+                            opts.startIn = 'downloads';
+                        }
+
+                        const handle = await window.showSaveFilePicker(opts);
+                        const writable = await handle.createWritable();
+                        await writable.write(dataStr);
+                        await writable.close();
+
+                        // 儲存最後匯出資訊
+                        localStorage.setItem(LAST_EXPORT_PATH_KEY, handle.name);
+
+                        const msg = document.getElementById(msgElementId);
+                        if (msg) {
+                            msg.className = "msg ok";
+                            msg.textContent = `✅ 已儲存至：${handle.name}（${j.count} 筆持股）`;
+                        } else {
+                            alert(`✅ 已儲存至：${handle.name}（${j.count} 筆持股）`);
+                        }
+                        return;
+                    } catch (e) {
+                        // 用戶取消或不支援，降級使用傳統下載
+                        if (e.name !== 'AbortError') {
+                            console.warn('showSaveFilePicker 失敗，使用傳統下載:', e);
+                        } else {
+                            return; // 用戶取消
+                        }
+                    }
+                }
+
+                // 傳統下載方式（回退方案）
                 const dataBlob = new Blob([dataStr], { type: "application/json" });
                 const url = URL.createObjectURL(dataBlob);
                 const a = document.createElement("a");
                 a.href = url;
-                a.download = `持股備份_${new Date().toISOString().slice(0, 10)}.json`;
+                a.download = defaultFilename;
                 a.click();
                 URL.revokeObjectURL(url);
 
-                const msg = document.getElementById("importMsg");
-                msg.className = "msg ok";
-                msg.textContent = "✅ 已下載持股資料";
+                const msg = document.getElementById(msgElementId);
+                if (msg) {
+                    msg.className = "msg ok";
+                    msg.textContent = `✅ 已下載持股資料（${j.count} 筆）`;
+                } else {
+                    alert(`✅ 已下載持股資料（${j.count} 筆）`);
+                }
             } catch (e) {
-                const msg = document.getElementById("importMsg");
-                msg.className = "msg err";
-                msg.textContent = "❌ " + e.message;
+                const msg = document.getElementById(msgElementId);
+                if (msg) {
+                    msg.className = "msg err";
+                    msg.textContent = "❌ " + e.message;
+                } else {
+                    alert("❌ 匯出失敗：" + e.message);
+                }
             }
-        };
+        }
+
+        document.getElementById("btnExportHoldings").onclick = () => exportHoldings("importMsg");
+        document.getElementById("btnExportHoldingsList").onclick = () => exportHoldings("holdMsg");
 
         const fileImportHoldings = document.getElementById("fileImportHoldings");
+        const fileImportHoldingsList = document.getElementById("fileImportHoldingsList");
+
         document.getElementById("btnImportHoldings").onclick = () => fileImportHoldings.click();
+        document.getElementById("btnImportHoldingsList").onclick = () => fileImportHoldingsList.click();
 
-        fileImportHoldings.onchange = async () => {
-            const f = fileImportHoldings.files[0];
-            if (!f) return;
+        async function handleImport(file, msgElementId, statusElementId = null, switchView = false) {
+            if (!file) return;
 
-            const msg = document.getElementById("importMsg");
-            const status = document.getElementById("importStatus");
+            const msg = document.getElementById(msgElementId);
+            const status = statusElementId ? document.getElementById(statusElementId) : null;
             msg.textContent = "⏳ 匯入中…";
             msg.className = "msg";
 
             try {
-                const text = await f.text();
+                const text = await file.text();
                 const stocks = JSON.parse(text);
 
                 if (!Array.isArray(stocks)) {
@@ -1261,19 +1333,48 @@
                 const j = await r.json();
                 if (!r.ok) throw new Error(j.error || "匯入 API 失敗");
 
+                // 儲存匯入資訊到 localStorage
+                const importInfo = {
+                    filename: file.name,
+                    importedAt: importedAt,
+                    count: j.success || 0
+                };
+                localStorage.setItem(LAST_IMPORT_INFO_KEY, JSON.stringify(importInfo));
+
                 msg.className = "msg ok";
                 msg.textContent = "✅ 匯入完成：" + (j.success || 0) + " 筆成功" +
-                    (j.failed ? "，" + j.failed + " 筆失敗" : "");
-                status.innerHTML = "<strong>匯入時間：</strong> " + importedAt;
+                    (j.failed ? "，" + j.failed + " 筆失敗" : "") +
+                    `（來源：${file.name}）`;
 
-                setTimeout(() => showView("holdings"), 1500);
+                if (status) {
+                    status.innerHTML = "<strong>匯入時間：</strong> " + importedAt;
+                }
+
+                // 重新載入持股列表
+                if (switchView) {
+                    setTimeout(() => showView("holdings"), 1500);
+                } else {
+                    setTimeout(() => loadHoldings(), 500);
+                }
             } catch (e) {
                 msg.className = "msg err";
                 msg.textContent = "❌ " + e.message;
-                status.innerHTML = "";
-            } finally {
-                fileImportHoldings.value = "";
+                if (status) {
+                    status.innerHTML = "";
+                }
             }
+        }
+
+        fileImportHoldings.onchange = async () => {
+            const f = fileImportHoldings.files[0];
+            await handleImport(f, "importMsg", "importStatus", true);
+            fileImportHoldings.value = "";
+        };
+
+        fileImportHoldingsList.onchange = async () => {
+            const f = fileImportHoldingsList.files[0];
+            await handleImport(f, "holdMsg", null, false);
+            fileImportHoldingsList.value = "";
         };
 
 
