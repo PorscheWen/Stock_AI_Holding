@@ -335,6 +335,14 @@
         }
 
         #shotTbl input,
+
+        #stockChart {
+            margin: 16px 0;
+            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.25);
+            padding: 12px;
+            height: 280px;
+        }
         #shotTbl select {
             width: 100%;
             min-width: 0;
@@ -385,6 +393,7 @@
                         <button type="button" class="secondary" id="btnReload">🔄 重新載入</button>
                         <button type="button" class="danger" id="btnClear">🗑️ 清空全部</button>
                     </div>
+                    <div id="stockChart"></div>
                     <div id="holdMsg" class="msg"></div>
                     <div style="overflow-x:auto;">
                         <table>
@@ -502,6 +511,16 @@
                 <p class="msg" style="color:var(--muted);font-size:0.82rem;">
                     隨機 ID 僅存在此裝置。若要在手機與電腦共用同一組持股，請在各裝置設定相同的 User ID。
                 </p>
+</div>
+            <div class="card">
+                <h3 style="margin-top:0; color: var(--text);">💾 持股資料備份</h3>
+                <div class="row" style="margin-bottom: 10px;">
+                    <button type="button" id="btnExportHoldings">📥 匯出持股</button>
+                    <button type="button" class="secondary" id="btnImportHoldings">📤 匯入持股</button>
+                </div>
+                <input type="file" id="fileImportHoldings" accept=".json" style="display:none;" />
+                <div id="importMsg" class="msg"></div>
+                <div id="importStatus" style="font-size: 0.82rem; color: var(--muted); margin-top: 8px;"></div>
             </div>
 
             <div class="card">
@@ -516,10 +535,13 @@
     </main>
 
     <nav class="bottom">
-        <a href="#settings" data-view="settings"><span>⚙️</span>設定</a>
-        <a href="#holdings" data-view="holdings"><span>📊</span>持股</a>
         <a href="#advisor" data-view="advisor"><span>🤖</span>建議</a>
+        <a href="#holdings" data-view="holdings"><span>📊</span>持股</a>
+        <a href="#settings" data-view="settings"><span>⚙️</span>設定</a>
     </nav>
+
+    <!-- 引入 Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <script>
         const UID_KEY = "holding_random_uid";
@@ -696,11 +718,13 @@
                 }
 
                 allStocks.forEach(s => renderStockRow(tbody, s));
+                updateStockChart();
             } catch (e) {
                 const cached = loadHoldingsFromLocal();
                 if (cached && Array.isArray(cached.stocks) && cached.stocks.length) {
                     allStocks = cached.stocks;
                     allStocks.forEach((s) => renderStockRow(tbody, s));
+                    updateStockChart();
                     const cachedAt = cached.saved_at ? new Date(cached.saved_at).toLocaleString() : "未知時間";
                     msg.textContent = "目前離線，已載入本機快取持股（" + cachedAt + "）";
                     msg.className = "msg";
@@ -717,6 +741,67 @@
             const j = await r.json();
             if (!r.ok) alert(j.error || "刪除失敗");
             loadHoldings();
+        }
+
+
+        let stockChartInstance = null;
+        
+        function updateStockChart() {
+            const ctx = document.getElementById("stockChart");
+            if (!allStocks || !allStocks.length) {
+                ctx.innerHTML = "<p style='text-align:center; color: var(--muted); padding: 20px;'>無持股資料可顯示圖表</p>";
+                return;
+            }
+            
+            const canvas = document.createElement("canvas");
+            ctx.innerHTML = "";
+            ctx.appendChild(canvas);
+            
+            const labels = allStocks.map(s => s.symbol);
+            const pnlData = allStocks.map(s => s.pnl_pct || 0);
+            
+            if (stockChartInstance) {
+                stockChartInstance.destroy();
+            }
+            
+            stockChartInstance = new Chart(canvas, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: '損益率 (%)',
+                            data: pnlData,
+                            backgroundColor: pnlData.map(v => v >= 0 ? 'rgba(102, 187, 106, 0.6)' : 'rgba(239, 83, 80, 0.6)'),
+                            borderColor: pnlData.map(v => v >= 0 ? '#66bb6a' : '#ef5350'),
+                            borderWidth: 1,
+                            yAxisID: 'y'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            labels: { color: '#9fa8da', font: { size: 11 } }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            type: 'linear',
+                            display: true,
+                            ticks: { color: '#9fa8da' },
+                            grid: { color: 'rgba(255, 255, 255, 0.06)' }
+                        },
+                        x: {
+                            ticks: { color: '#9fa8da', font: { size: 10 } },
+                            grid: { color: 'rgba(255, 255, 255, 0.06)' }
+                        }
+                    }
+                }
+            });
         }
 
         document.getElementById("btnReload").onclick = () => loadHoldings();
@@ -1071,6 +1156,84 @@
             localStorage.removeItem(HOLDINGS_CACHE_KEY);
             alert("✅ 已清除本機持股快取");
         };
+        // ====== 匯入/匯出功能 ======
+        document.getElementById("btnExportHoldings").onclick = async () => {
+            try {
+                const r = await fetch("/api/portfolio/export", { headers: hdrOnly() });
+                const j = await r.json();
+                if (!r.ok) throw new Error(j.error || "匯出失敗");
+                
+                const dataStr = JSON.stringify(j.stocks, null, 2);
+                const dataBlob = new Blob([dataStr], { type: "application/json" });
+                const url = URL.createObjectURL(dataBlob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `持股備份_${new Date().toISOString().slice(0,10)}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+                
+                const msg = document.getElementById("importMsg");
+                msg.className = "msg ok";
+                msg.textContent = "✅ 已下載持股資料";
+            } catch (e) {
+                const msg = document.getElementById("importMsg");
+                msg.className = "msg err";
+                msg.textContent = "❌ " + e.message;
+            }
+        };
+        
+        const fileImportHoldings = document.getElementById("fileImportHoldings");
+        document.getElementById("btnImportHoldings").onclick = () => fileImportHoldings.click();
+        
+        fileImportHoldings.onchange = async () => {
+            const f = fileImportHoldings.files[0];
+            if (!f) return;
+            
+            const msg = document.getElementById("importMsg");
+            const status = document.getElementById("importStatus");
+            msg.textContent = "⏳ 匯入中…";
+            msg.className = "msg";
+            
+            try {
+                const text = await f.text();
+                const stocks = JSON.parse(text);
+                
+                if (!Array.isArray(stocks)) {
+                    throw new Error("檔案格式錯誤，應為持股陣列");
+                }
+                
+                const importedAt = new Date().toLocaleString("zh-TW", { 
+                    year: "numeric", 
+                    month: "2-digit", 
+                    day: "2-digit",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit"
+                });
+                
+                const r = await fetch("/api/portfolio/import", {
+                    method: "POST",
+                    headers: hdrJson(),
+                    body: JSON.stringify({ stocks: stocks, clear_existing: true })
+                });
+                const j = await r.json();
+                if (!r.ok) throw new Error(j.error || "匯入 API 失敗");
+                
+                msg.className = "msg ok";
+                msg.textContent = "✅ 匯入完成：" + (j.success || 0) + " 筆成功" + 
+                    (j.failed ? "，" + j.failed + " 筆失敗" : "");
+                status.innerHTML = "<strong>匯入時間：</strong> " + importedAt;
+                
+                setTimeout(() => showView("holdings"), 1500);
+            } catch (e) {
+                msg.className = "msg err";
+                msg.textContent = "❌ " + e.message;
+                status.innerHTML = "";
+            } finally {
+                fileImportHoldings.value = "";
+            }
+        };
+
 
         function refreshUidLabel() {
             document.getElementById("uidLabel").textContent = "User ID：" + getUserId();
