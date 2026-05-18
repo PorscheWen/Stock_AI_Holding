@@ -10,6 +10,7 @@ Holding PWA — Agent 操作建議
 from __future__ import annotations
 
 import logging
+import time
 import urllib.request
 from datetime import datetime, timezone
 from typing import Any
@@ -20,6 +21,9 @@ from agents.tw_market_agent import run_one_month_tw_outlook
 from stock_display_zh import resolve_stock_name_zh
 
 logger = logging.getLogger(__name__)
+
+# 請求間隔（秒），避免 API rate limit
+REQUEST_DELAY = 0.5
 
 QUOTE_PROVIDER_PRIMARY = "Yahoo Finance（yfinance 公開 API）"
 QUOTE_PROVIDER_CROSS = "Stooq（日線 CSV 公開資料）"
@@ -385,6 +389,9 @@ def _analyze_one(
         "currency": None,
     }
     try:
+        # 添加延遲避免 rate limit
+        time.sleep(REQUEST_DELAY)
+        
         t = yf.Ticker(symbol)
         info = t.info or {}
         row["name"] = resolve_stock_name_zh(symbol, yf_info=info, stored_name=stored_name)
@@ -487,8 +494,17 @@ def _analyze_one(
             row["horizon"] = "波段"
 
     except Exception as e:
+        error_msg = str(e).lower()
         logger.warning("holding_advisor %s: %s", symbol, e)
-        row["suggestion"] = f"分析失敗：{e}"
+        
+        # 檢查是否為 rate limit 錯誤
+        if "429" in error_msg or "too many requests" in error_msg or "rate limit" in error_msg:
+            row["suggestion"] = (
+                f"API 請求過於頻繁（{symbol}），請稍後再試。"
+                "建議：減少持股數量或等待數分鐘後重新執行。"
+            )
+        else:
+            row["suggestion"] = f"分析失敗：{e}"
 
     _append_tw_market_hints(row, tw_bias=tw_bias, holding_bucket=bucket)
     row["bucket_strategy_zh"] = _bucket_strategy_summary_zh(row)

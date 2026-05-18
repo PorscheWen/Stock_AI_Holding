@@ -268,6 +268,48 @@ def api_advisor_history():
     return jsonify({"items": slim}), 200
 
 
+@app.get("/api/portfolio/export")
+def api_portfolio_export():
+    """匯出持股為 JSON 格式。"""
+    uid, err = _require_user_id()
+    if err:
+        return err
+    stocks = db.get_portfolio(uid)
+    export_data = [
+        {
+            "symbol": stock["symbol"],
+            "name": stock.get("name", ""),
+            "shares": stock.get("shares", 0),
+            "avg_price": stock.get("avg_price", 0),
+            "note": stock.get("note", ""),
+        }
+        for stock in stocks
+    ]
+    return jsonify({"stocks": export_data, "count": len(export_data)}), 200
+
+
+@app.post("/api/portfolio/import")
+def api_portfolio_import():
+    """匯入持股資料（JSON 格式），可選擇是否清空現有持股。"""
+    uid, err = _require_user_id()
+    if err:
+        return err
+    data = request.get_json(force=True) or {}
+    stocks = data.get("stocks", [])
+    clear_existing = data.get("clear_existing", False)
+    
+    if not stocks or not isinstance(stocks, list):
+        return jsonify({"error": "stocks array required"}), 400
+    
+    # 如果需要清空現有持股
+    if clear_existing:
+        db.clear_portfolio(uid)
+    
+    # 批量匯入
+    result = db.batch_add_stocks(uid, stocks)
+    return jsonify(result), 200
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     logger.info("Stock_AI_Holding：PWA /app、持股 API、截圖辨識")
