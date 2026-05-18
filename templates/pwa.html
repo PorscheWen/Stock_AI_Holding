@@ -343,6 +343,7 @@
             padding: 12px;
             height: 280px;
         }
+
         #shotTbl select {
             width: 100%;
             min-width: 0;
@@ -455,10 +456,11 @@
                     </p>
 
                     <div class="upload-area" id="uploadArea">
-                        <input type="file" id="fileImg" accept="image/*" style="display:none;" />
+                        <input type="file" id="fileImg" accept="image/*" multiple style="display:none;" />
                         <div style="font-size: 2rem; margin-bottom: 8px;">📤</div>
                         <div style="color: var(--muted);">點擊或拖曳圖片至此處</div>
-                        <div style="font-size: 0.75rem; color: var(--muted); margin-top: 4px;">支援 JPG, PNG 等格式</div>
+                        <div style="font-size: 0.75rem; color: var(--muted); margin-top: 4px;">支援一次選取多張 JPG, PNG 等格式
+                        </div>
                     </div>
 
                     <img id="preview" alt="preview" />
@@ -466,19 +468,20 @@
                     <div id="shotMsg" class="msg"></div>
 
                     <div id="shotResult" style="display:none;">
-                    <div class="row" style="margin: 8px 0 10px;">
-                        <div>
-                            <label>匯入分類快速套用</label>
-                            <select id="shotBulkBucket">
-                                <option value="">不變更（保留逐筆）</option>
-                                <option value="short_term">全部改為短期持股</option>
-                                <option value="stable_profit">全部改為穩定獲利（長期）</option>
-                            </select>
+                        <div class="row" style="margin: 8px 0 10px;">
+                            <div>
+                                <label>匯入分類快速套用</label>
+                                <select id="shotBulkBucket">
+                                    <option value="">不變更（保留逐筆）</option>
+                                    <option value="short_term">全部改為短期持股</option>
+                                    <option value="stable_profit">全部改為穩定獲利（長期）</option>
+                                </select>
+                            </div>
+                            <div style="align-self:end;">
+                                <button type="button" class="secondary" id="btnApplyShotBucket"
+                                    style="margin-top:0;">套用到全部匯入列</button>
+                            </div>
                         </div>
-                        <div style="align-self:end;">
-                            <button type="button" class="secondary" id="btnApplyShotBucket" style="margin-top:0;">套用到全部匯入列</button>
-                        </div>
-                    </div>
                         <p class="pill" id="confPill"></p>
                         <div style="overflow-x:auto; margin-top: 12px;">
                             <table>
@@ -511,7 +514,7 @@
                 <p class="msg" style="color:var(--muted);font-size:0.82rem;">
                     隨機 ID 僅存在此裝置。若要在手機與電腦共用同一組持股，請在各裝置設定相同的 User ID。
                 </p>
-</div>
+            </div>
             <div class="card">
                 <h3 style="margin-top:0; color: var(--text);">💾 持股資料備份</h3>
                 <div class="row" style="margin-bottom: 10px;">
@@ -535,9 +538,9 @@
     </main>
 
     <nav class="bottom">
-        <a href="#advisor" data-view="advisor"><span>🤖</span>建議</a>
-        <a href="#holdings" data-view="holdings"><span>📊</span>持股</a>
         <a href="#settings" data-view="settings"><span>⚙️</span>設定</a>
+        <a href="#holdings" data-view="holdings"><span>📊</span>持股</a>
+        <a href="#advisor" data-view="advisor"><span>🤖</span>建議</a>
     </nav>
 
     <!-- 引入 Chart.js -->
@@ -745,25 +748,25 @@
 
 
         let stockChartInstance = null;
-        
+
         function updateStockChart() {
             const ctx = document.getElementById("stockChart");
             if (!allStocks || !allStocks.length) {
                 ctx.innerHTML = "<p style='text-align:center; color: var(--muted); padding: 20px;'>無持股資料可顯示圖表</p>";
                 return;
             }
-            
+
             const canvas = document.createElement("canvas");
             ctx.innerHTML = "";
             ctx.appendChild(canvas);
-            
+
             const labels = allStocks.map(s => s.symbol);
             const pnlData = allStocks.map(s => s.pnl_pct || 0);
-            
+
             if (stockChartInstance) {
                 stockChartInstance.destroy();
             }
-            
+
             stockChartInstance = new Chart(canvas, {
                 type: 'bar',
                 data: {
@@ -914,6 +917,7 @@
 
         // ====== 截圖上傳功能 ======
         let lastShotStocks = [];
+        let selectedShotFiles = [];
         const uploadArea = document.getElementById("uploadArea");
         const fileInput = document.getElementById("fileImg");
         const preview = document.getElementById("preview");
@@ -934,55 +938,93 @@
         uploadArea.ondrop = (e) => {
             e.preventDefault();
             uploadArea.classList.remove("drag-over");
-            const files = e.dataTransfer.files;
+            const files = Array.from(e.dataTransfer.files || []).filter((file) => file.type.startsWith("image/"));
             if (files.length) {
-                fileInput.files = files;
-                handleFileSelect();
+                selectedShotFiles = files;
+                handleFileSelect(files);
             }
         };
 
-        fileInput.onchange = handleFileSelect;
+        fileInput.onchange = () => {
+            selectedShotFiles = Array.from(fileInput.files || []).filter((file) => file.type.startsWith("image/"));
+            handleFileSelect(selectedShotFiles);
+        };
 
-        function handleFileSelect() {
-            const f = fileInput.files[0];
-            if (!f) {
+        function handleFileSelect(files = selectedShotFiles) {
+            const msg = document.getElementById("shotMsg");
+            const pickedFiles = Array.from(files || []).filter((file) => file.type.startsWith("image/"));
+            selectedShotFiles = pickedFiles;
+            if (!pickedFiles.length) {
                 preview.style.display = "none";
+                preview.removeAttribute("src");
                 btnAnalyze.disabled = true;
+                msg.className = "msg";
+                msg.textContent = "";
                 return;
             }
-            preview.src = URL.createObjectURL(f);
+            const firstFile = pickedFiles[0];
+            preview.src = URL.createObjectURL(firstFile);
             preview.style.display = "block";
             btnAnalyze.disabled = false;
             document.getElementById("shotResult").style.display = "none";
+            msg.className = "msg";
+            msg.textContent = pickedFiles.length === 1
+                ? "已選擇 1 張圖片。"
+                : "已選擇 " + pickedFiles.length + " 張圖片，辨識時會依序合併結果。";
         }
 
         btnAnalyze.onclick = async () => {
             const msg = document.getElementById("shotMsg");
             msg.className = "msg";
-            const f = fileInput.files[0];
-            if (!f) {
+            const files = selectedShotFiles;
+            if (!files.length) {
                 msg.className = "msg err";
                 msg.textContent = "請先選擇圖片";
                 return;
             }
 
-            msg.textContent = "🔍 AI 辨識中，請稍候...";
+            msg.textContent = files.length === 1
+                ? "🔍 AI 辨識中，請稍候..."
+                : "🔍 AI 辨識 " + files.length + " 張圖片中，請稍候...";
             btnAnalyze.disabled = true;
 
             try {
-                const fd = new FormData();
-                fd.append("image", f, f.name);
-                const r = await fetch("/api/screenshot", { method: "POST", headers: { "X-User-ID": getUserId() }, body: fd });
-                const j = await r.json();
-                if (!r.ok) throw new Error(j.error || "辨識失敗");
+                const mergedStocks = [];
+                const notes = [];
+                const confidences = [];
 
-                lastShotStocks = j.stocks || [];
+                for (let i = 0; i < files.length; i++) {
+                    const file = files[i];
+                    msg.textContent = "🔍 正在辨識第 " + (i + 1) + "/" + files.length + " 張：" + file.name;
+                    const fd = new FormData();
+                    fd.append("image", file, file.name);
+                    const r = await fetch("/api/screenshot", { method: "POST", headers: { "X-User-ID": getUserId() }, body: fd });
+                    const j = await r.json();
+                    if (!r.ok) throw new Error((file.name ? file.name + "：" : "") + (j.error || "辨識失敗"));
+                    mergedStocks.push(...(j.stocks || []));
+                    if (j.note) notes.push(file.name + "：" + j.note);
+                    if (j.confidence != null) {
+                        const confidence = Number(j.confidence);
+                        if (Number.isFinite(confidence)) {
+                            confidences.push(confidence <= 1 ? confidence * 100 : confidence);
+                        }
+                    }
+                }
+
+                lastShotStocks = mergedStocks;
                 lastShotStocks.forEach((x) => {
                     if (!x.holding_bucket) x.holding_bucket = "short_term";
                 });
+                const validConfidences = confidences.filter((value) => Number.isFinite(value));
+                const avgConfidence = validConfidences.length
+                    ? Math.round(validConfidences.reduce((sum, value) => sum + value, 0) / validConfidences.length)
+                    : null;
                 msg.className = "msg ok";
-                msg.textContent = "✅ " + (j.note || "辨識完成") +
-                    (j.confidence != null ? "（信心度 " + Math.round((j.confidence <= 1 ? j.confidence * 100 : j.confidence)) + "%）" : "");
+                msg.textContent = "✅ 已完成 " + files.length + " 張圖片辨識，共整理出 " + lastShotStocks.length + " 筆資料" +
+                    (avgConfidence != null ? "（平均信心度 " + avgConfidence + "%）" : "");
+                document.getElementById("confPill").textContent = notes.length
+                    ? notes.join(" | ")
+                    : "已完成辨識";
 
                 renderShotTable();
                 document.getElementById("shotResult").style.display = lastShotStocks.length ? "block" : "none";
@@ -1162,16 +1204,16 @@
                 const r = await fetch("/api/portfolio/export", { headers: hdrOnly() });
                 const j = await r.json();
                 if (!r.ok) throw new Error(j.error || "匯出失敗");
-                
+
                 const dataStr = JSON.stringify(j.stocks, null, 2);
                 const dataBlob = new Blob([dataStr], { type: "application/json" });
                 const url = URL.createObjectURL(dataBlob);
                 const a = document.createElement("a");
                 a.href = url;
-                a.download = `持股備份_${new Date().toISOString().slice(0,10)}.json`;
+                a.download = `持股備份_${new Date().toISOString().slice(0, 10)}.json`;
                 a.click();
                 URL.revokeObjectURL(url);
-                
+
                 const msg = document.getElementById("importMsg");
                 msg.className = "msg ok";
                 msg.textContent = "✅ 已下載持股資料";
@@ -1181,36 +1223,36 @@
                 msg.textContent = "❌ " + e.message;
             }
         };
-        
+
         const fileImportHoldings = document.getElementById("fileImportHoldings");
         document.getElementById("btnImportHoldings").onclick = () => fileImportHoldings.click();
-        
+
         fileImportHoldings.onchange = async () => {
             const f = fileImportHoldings.files[0];
             if (!f) return;
-            
+
             const msg = document.getElementById("importMsg");
             const status = document.getElementById("importStatus");
             msg.textContent = "⏳ 匯入中…";
             msg.className = "msg";
-            
+
             try {
                 const text = await f.text();
                 const stocks = JSON.parse(text);
-                
+
                 if (!Array.isArray(stocks)) {
                     throw new Error("檔案格式錯誤，應為持股陣列");
                 }
-                
-                const importedAt = new Date().toLocaleString("zh-TW", { 
-                    year: "numeric", 
-                    month: "2-digit", 
+
+                const importedAt = new Date().toLocaleString("zh-TW", {
+                    year: "numeric",
+                    month: "2-digit",
                     day: "2-digit",
                     hour: "2-digit",
                     minute: "2-digit",
                     second: "2-digit"
                 });
-                
+
                 const r = await fetch("/api/portfolio/import", {
                     method: "POST",
                     headers: hdrJson(),
@@ -1218,12 +1260,12 @@
                 });
                 const j = await r.json();
                 if (!r.ok) throw new Error(j.error || "匯入 API 失敗");
-                
+
                 msg.className = "msg ok";
-                msg.textContent = "✅ 匯入完成：" + (j.success || 0) + " 筆成功" + 
+                msg.textContent = "✅ 匯入完成：" + (j.success || 0) + " 筆成功" +
                     (j.failed ? "，" + j.failed + " 筆失敗" : "");
                 status.innerHTML = "<strong>匯入時間：</strong> " + importedAt;
-                
+
                 setTimeout(() => showView("holdings"), 1500);
             } catch (e) {
                 msg.className = "msg err";
