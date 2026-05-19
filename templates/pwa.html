@@ -265,13 +265,6 @@
             font-size: 1.1rem;
         }
 
-        #preview {
-            max-width: 100%;
-            border-radius: 8px;
-            margin-top: 8px;
-            display: none;
-        }
-
         ul.help {
             margin: 0;
             padding-left: 1.1rem;
@@ -332,6 +325,127 @@
         .upload-area.drag-over {
             border-color: var(--accent);
             background: rgba(92, 107, 192, 0.15);
+        }
+
+        /* 圖片縮圖格 */
+        .img-thumb-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin: 10px 0;
+        }
+
+        .img-thumb-item {
+            position: relative;
+            width: 78px;
+            height: 78px;
+            border-radius: 6px;
+            overflow: hidden;
+            border: 2px solid rgba(255, 255, 255, 0.12);
+            flex-shrink: 0;
+        }
+
+        .img-thumb-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        .img-thumb-item .thumb-remove {
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            background: rgba(0, 0, 0, 0.65);
+            color: #fff;
+            border: none;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            font-size: 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            margin: 0;
+            line-height: 1;
+        }
+
+        .img-thumb-item .thumb-remove:hover {
+            background: rgba(239, 83, 80, 0.9);
+        }
+
+        .img-thumb-item.status-analyzing::after,
+        .img-thumb-item.status-done::after,
+        .img-thumb-item.status-err::after {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            background: rgba(0, 0, 0, 0.5);
+        }
+
+        .img-thumb-item.status-analyzing::after {
+            content: '⏳';
+            background: rgba(92, 107, 192, 0.55);
+        }
+
+        .img-thumb-item.status-done::after {
+            content: '✅';
+        }
+
+        .img-thumb-item.status-err::after {
+            content: '❌';
+        }
+
+        /* JSON 匯入拖放區 */
+        .import-drop-zone {
+            border: 2px dashed rgba(255, 255, 255, 0.12);
+            border-radius: 8px;
+            padding: 14px;
+            transition: all 0.2s;
+            margin-bottom: 10px;
+        }
+
+        .import-drop-zone.drag-over-json {
+            border-color: var(--accent);
+            background: rgba(92, 107, 192, 0.1);
+        }
+
+        /* 匯入確認 Modal */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.72);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+        }
+
+        .modal-box {
+            background: var(--card);
+            border-radius: var(--radius);
+            padding: 20px;
+            max-width: 320px;
+            width: 90%;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+        }
+
+        .modal-box h4 {
+            margin: 0 0 12px;
+            font-size: 1rem;
+            color: var(--text);
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 16px;
+            flex-wrap: wrap;
         }
 
         #stockChart {
@@ -397,9 +511,13 @@
                             <input id="filterInput" type="text" placeholder="輸入代碼或名稱搜尋..." />
                         </div>
                     </div>
-                    <div class="row" style="margin-bottom:10px;">
-                        <button type="button" class="secondary" id="btnImportHoldingsList">📤 匯入</button>
-                        <button type="button" class="secondary" id="btnExportHoldingsList">📥 匯出</button>
+                    <div class="import-drop-zone" id="importDropZoneList">
+                        <div class="row" style="margin-bottom:0;">
+                            <button type="button" class="secondary" id="btnImportHoldingsList">📤 匯入</button>
+                            <button type="button" class="secondary" id="btnExportHoldingsList">📥 匯出</button>
+                        </div>
+                        <div style="font-size:0.72rem;color:var(--muted);margin-top:6px;text-align:center;">可直接將 JSON
+                            備份檔拖放至此區域匯入</div>
                     </div>
                     <div class="row" style="margin-bottom:10px;">
                         <button type="button" class="danger" id="btnClear">🗑️ 清空全部</button>
@@ -471,11 +589,14 @@
                         <input type="file" id="fileImg" accept="image/*" multiple style="display:none;" />
                         <div style="font-size: 2rem; margin-bottom: 8px;">📤</div>
                         <div style="color: var(--muted);">點擊或拖曳圖片至此處</div>
-                        <div style="font-size: 0.75rem; color: var(--muted); margin-top: 4px;">支援一次選取多張 JPG, PNG 等格式
+                        <div style="font-size: 0.75rem; color: var(--muted); margin-top: 4px;">
+                            支援多張 JPG / PNG · 可貼上 (Ctrl+V / 長按貼上)
                         </div>
                     </div>
 
-                    <img id="preview" alt="preview" />
+                    <!-- 縮圖格：每張圖片顯示縮圖+移除鈕，辨識時顯示進度狀態 -->
+                    <div id="imgThumbGrid" class="img-thumb-grid" style="display:none;"></div>
+
                     <button type="button" id="btnAnalyze" disabled>🔍 開始辨識</button>
                     <div id="shotMsg" class="msg"></div>
 
@@ -533,14 +654,18 @@
             </div>
             <div class="card">
                 <h3 style="margin-top:0; color: var(--text);">💾 持股資料備份</h3>
-                <div class="row" style="margin-bottom: 10px;">
-                    <button type="button" id="btnExportHoldings">📥 匯出持股</button>
-                    <div id="lastImportInfo"
-                        style="font-size: 0.75rem; color: var(--muted); margin-top: 12px; padding: 8px; background: rgba(0,0,0,0.2); border-radius: 6px; display: none;">
-                        <strong>上次匯入記錄：</strong><br>
-                        <span id="lastImportDetails"></span>
+                <div class="import-drop-zone" id="importDropZoneSettings">
+                    <div class="row" style="margin-bottom:0;">
+                        <button type="button" id="btnExportHoldings">📥 匯出持股</button>
+                        <button type="button" class="secondary" id="btnImportHoldings">📤 匯入持股</button>
                     </div>
-                    <button type="button" class="secondary" id="btnImportHoldings">📤 匯入持股</button>
+                    <div style="font-size:0.72rem;color:var(--muted);margin-top:6px;text-align:center;">可直接將 JSON
+                        備份檔拖放至此區域匯入</div>
+                </div>
+                <div id="lastImportInfo"
+                    style="font-size: 0.75rem; color: var(--muted); margin-bottom: 10px; padding: 8px; background: rgba(0,0,0,0.2); border-radius: 6px; display: none;">
+                    <strong>上次匯入記錄：</strong><br>
+                    <span id="lastImportDetails"></span>
                 </div>
                 <input type="file" id="fileImportHoldings" accept=".json" style="display:none;" />
                 <div id="importMsg" class="msg"></div>
@@ -557,6 +682,24 @@
             </div>
         </section>
     </main>
+
+    <!-- 匯入確認 Modal -->
+    <div id="importConfirmModal" class="modal-overlay" style="display:none;">
+        <div class="modal-box">
+            <h4>📤 確認匯入持股</h4>
+            <div id="importConfirmBody"
+                style="font-size:0.88rem;color:var(--muted);line-height:1.7;margin-bottom:12px;"></div>
+            <label style="font-size:0.82rem;">匯入模式</label>
+            <select id="importModeSelect" style="margin-top:6px;">
+                <option value="replace">清空後匯入（覆蓋現有持股）</option>
+                <option value="merge">合併匯入（保留現有持股，同代碼覆蓋）</option>
+            </select>
+            <div class="modal-actions">
+                <button type="button" id="btnImportConfirm">✅ 確認匯入</button>
+                <button type="button" class="secondary" id="btnImportCancel">取消</button>
+            </div>
+        </div>
+    </div>
 
     <nav class="bottom">
         <a href="#settings" data-view="settings"><span>⚙️</span>設定</a>
@@ -979,7 +1122,6 @@
         let selectedShotFiles = [];
         const uploadArea = document.getElementById("uploadArea");
         const fileInput = document.getElementById("fileImg");
-        const preview = document.getElementById("preview");
         const btnAnalyze = document.getElementById("btnAnalyze");
 
         uploadArea.onclick = () => fileInput.click();
@@ -999,31 +1141,73 @@
             uploadArea.classList.remove("drag-over");
             const files = Array.from(e.dataTransfer.files || []).filter((file) => file.type.startsWith("image/"));
             if (files.length) {
-                selectedShotFiles = files;
-                handleFileSelect(files);
+                selectedShotFiles = [...selectedShotFiles, ...files];
+                handleFileSelect(selectedShotFiles);
             }
         };
 
         fileInput.onchange = () => {
-            selectedShotFiles = Array.from(fileInput.files || []).filter((file) => file.type.startsWith("image/"));
+            const newFiles = Array.from(fileInput.files || []).filter((file) => file.type.startsWith("image/"));
+            selectedShotFiles = [...selectedShotFiles, ...newFiles];
             handleFileSelect(selectedShotFiles);
+            fileInput.value = "";
         };
+
+        // 剪貼簿貼上圖片支援（截圖 Tab 啟用時有效）
+        document.addEventListener("paste", (e) => {
+            const shotTab = document.getElementById("tab-screenshot");
+            if (!shotTab || !shotTab.classList.contains("active")) return;
+            const items = Array.from(e.clipboardData?.items || []);
+            const pastedFiles = items
+                .filter(item => item.type.startsWith("image/"))
+                .map(item => item.getAsFile())
+                .filter(Boolean);
+            if (!pastedFiles.length) return;
+            selectedShotFiles = [...selectedShotFiles, ...pastedFiles];
+            handleFileSelect(selectedShotFiles);
+            const msg = document.getElementById("shotMsg");
+            msg.className = "msg ok";
+            msg.textContent = "📋 已貼上 " + pastedFiles.length + " 張圖片，共 " + selectedShotFiles.length + " 張。";
+        });
 
         function handleFileSelect(files = selectedShotFiles) {
             const msg = document.getElementById("shotMsg");
             const pickedFiles = Array.from(files || []).filter((file) => file.type.startsWith("image/"));
             selectedShotFiles = pickedFiles;
+            const grid = document.getElementById("imgThumbGrid");
             if (!pickedFiles.length) {
-                preview.style.display = "none";
-                preview.removeAttribute("src");
+                grid.style.display = "none";
+                grid.innerHTML = "";
                 btnAnalyze.disabled = true;
                 msg.className = "msg";
                 msg.textContent = "";
                 return;
             }
-            const firstFile = pickedFiles[0];
-            preview.src = URL.createObjectURL(firstFile);
-            preview.style.display = "block";
+            // 重建縮圖格
+            grid.innerHTML = "";
+            grid.style.display = "flex";
+            pickedFiles.forEach((file, idx) => {
+                const item = document.createElement("div");
+                item.className = "img-thumb-item";
+                item.dataset.thumbIdx = String(idx);
+                const img = document.createElement("img");
+                img.src = URL.createObjectURL(file);
+                img.alt = file.name;
+                img.title = file.name;
+                const removeBtn = document.createElement("button");
+                removeBtn.className = "thumb-remove";
+                removeBtn.textContent = "×";
+                removeBtn.title = "移除此圖";
+                removeBtn.type = "button";
+                removeBtn.addEventListener("click", (e) => {
+                    e.stopPropagation();
+                    selectedShotFiles = selectedShotFiles.filter((_, i) => i !== idx);
+                    handleFileSelect(selectedShotFiles);
+                });
+                item.appendChild(img);
+                item.appendChild(removeBtn);
+                grid.appendChild(item);
+            });
             btnAnalyze.disabled = false;
             document.getElementById("shotResult").style.display = "none";
             msg.className = "msg";
@@ -1047,6 +1231,10 @@
                 : "🔍 AI 辨識 " + files.length + " 張圖片中，請稍候...";
             btnAnalyze.disabled = true;
 
+            // 重置縮圖狀態
+            const thumbItems = Array.from(document.querySelectorAll(".img-thumb-item"));
+            thumbItems.forEach(el => { el.className = "img-thumb-item"; });
+
             try {
                 const mergedStocks = [];
                 const notes = [];
@@ -1055,11 +1243,21 @@
                 for (let i = 0; i < files.length; i++) {
                     const file = files[i];
                     msg.textContent = "🔍 正在辨識第 " + (i + 1) + "/" + files.length + " 張：" + file.name;
+                    if (thumbItems[i]) thumbItems[i].className = "img-thumb-item status-analyzing";
+
                     const fd = new FormData();
                     fd.append("image", file, file.name);
-                    const r = await fetch("/api/screenshot", { method: "POST", headers: { "X-User-ID": getUserId() }, body: fd });
-                    const j = await r.json();
-                    if (!r.ok) throw new Error((file.name ? file.name + "：" : "") + (j.error || "辨識失敗"));
+                    let r, j;
+                    try {
+                        r = await fetch("/api/screenshot", { method: "POST", headers: { "X-User-ID": getUserId() }, body: fd });
+                        j = await r.json();
+                        if (!r.ok) throw new Error((file.name ? file.name + "：" : "") + (j.error || "辨識失敗"));
+                        if (thumbItems[i]) thumbItems[i].className = "img-thumb-item status-done";
+                    } catch (fileErr) {
+                        if (thumbItems[i]) thumbItems[i].className = "img-thumb-item status-err";
+                        throw fileErr;
+                    }
+
                     mergedStocks.push(...(j.stocks || []));
                     if (j.note) notes.push(file.name + "：" + j.note);
                     if (j.confidence != null) {
@@ -1262,7 +1460,17 @@
         };
 
         // ====== 匯入/匯出功能 ======
+        let pendingImport = null;
+
         async function exportHoldings(msgElementId = "importMsg") {
+            const msg = document.getElementById(msgElementId);
+            if (msg) {
+                msg.className = "msg";
+                const localCount = allStocks && allStocks.length ? allStocks.length : null;
+                msg.textContent = localCount != null
+                    ? "⏳ 匯出 " + localCount + " 筆持股中..."
+                    : "⏳ 匯出中...";
+            }
             try {
                 const r = await fetch("/api/portfolio/export", { headers: hdrOnly() });
                 const j = await r.json();
@@ -1281,22 +1489,15 @@
                                 accept: { 'application/json': ['.json'] }
                             }]
                         };
-
-                        // 記錄上次匯出路徑
                         const lastPath = localStorage.getItem(LAST_EXPORT_PATH_KEY);
-                        if (lastPath) {
-                            opts.startIn = 'downloads';
-                        }
+                        if (lastPath) opts.startIn = 'downloads';
 
                         const handle = await window.showSaveFilePicker(opts);
                         const writable = await handle.createWritable();
                         await writable.write(dataStr);
                         await writable.close();
-
-                        // 儲存最後匯出資訊
                         localStorage.setItem(LAST_EXPORT_PATH_KEY, handle.name);
 
-                        const msg = document.getElementById(msgElementId);
                         if (msg) {
                             msg.className = "msg ok";
                             msg.textContent = `✅ 已儲存至：${handle.name}（${j.count} 筆持股）`;
@@ -1305,16 +1506,16 @@
                         }
                         return;
                     } catch (e) {
-                        // 用戶取消或不支援，降級使用傳統下載
                         if (e.name !== 'AbortError') {
                             console.warn('showSaveFilePicker 失敗，使用傳統下載:', e);
                         } else {
-                            return; // 用戶取消
+                            if (msg) { msg.className = "msg"; msg.textContent = ""; }
+                            return;
                         }
                     }
                 }
 
-                // 傳統下載方式（回退方案）
+                // 傳統下載（回退方案）
                 const dataBlob = new Blob([dataStr], { type: "application/json" });
                 const url = URL.createObjectURL(dataBlob);
                 const a = document.createElement("a");
@@ -1326,7 +1527,6 @@
                 document.body.removeChild(a);
                 setTimeout(() => URL.revokeObjectURL(url), 1000);
 
-                const msg = document.getElementById(msgElementId);
                 if (msg) {
                     msg.className = "msg ok";
                     msg.textContent = `✅ 已下載持股資料（${j.count} 筆）`;
@@ -1334,7 +1534,6 @@
                     alert(`✅ 已下載持股資料（${j.count} 筆）`);
                 }
             } catch (e) {
-                const msg = document.getElementById(msgElementId);
                 if (msg) {
                     msg.className = "msg err";
                     msg.textContent = "❌ " + e.message;
@@ -1353,9 +1552,85 @@
         document.getElementById("btnImportHoldings").onclick = () => fileImportHoldings.click();
         document.getElementById("btnImportHoldingsList").onclick = () => fileImportHoldingsList.click();
 
+        // JSON 拖放區設定
+        function setupJsonDropZone(zoneId, msgElementId, statusElementId, switchView) {
+            const zone = document.getElementById(zoneId);
+            if (!zone) return;
+            zone.addEventListener("dragover", (e) => {
+                const hasFiles = Array.from(e.dataTransfer.types || []).includes("Files");
+                if (hasFiles) { e.preventDefault(); zone.classList.add("drag-over-json"); }
+            });
+            zone.addEventListener("dragleave", (e) => {
+                if (!zone.contains(e.relatedTarget)) zone.classList.remove("drag-over-json");
+            });
+            zone.addEventListener("drop", (e) => {
+                e.preventDefault();
+                zone.classList.remove("drag-over-json");
+                const files = Array.from(e.dataTransfer.files || []);
+                const jsonFile = files.find(f => f.type === "application/json" || f.name.toLowerCase().endsWith(".json"));
+                if (!jsonFile) {
+                    const msg = document.getElementById(msgElementId);
+                    if (msg) { msg.className = "msg err"; msg.textContent = "❌ 請拖放 .json 格式的持股備份檔"; }
+                    return;
+                }
+                handleImport(jsonFile, msgElementId, statusElementId, switchView);
+            });
+        }
+
+        setupJsonDropZone("importDropZoneList", "holdMsg", null, false);
+        setupJsonDropZone("importDropZoneSettings", "importMsg", "importStatus", true);
+
+        // 匯入確認 Modal
+        function showImportModal(file, msgElementId, statusElementId, switchView) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const parsed = JSON.parse(e.target.result);
+                    const count = Array.isArray(parsed) ? parsed.length : null;
+                    const body = document.getElementById("importConfirmBody");
+                    const confirmBtn = document.getElementById("btnImportConfirm");
+                    if (count == null) {
+                        body.innerHTML = "<strong>檔案：</strong>" + escapeHtml(file.name) + "<br>" +
+                            "<span style='color:var(--err)'>⚠️ 檔案格式錯誤，無法辨識為持股陣列</span>";
+                        confirmBtn.disabled = true;
+                    } else {
+                        body.innerHTML = "<strong>檔案：</strong>" + escapeHtml(file.name) + "<br>" +
+                            "<strong>持股筆數：</strong>" + count + " 筆<br>";
+                        if (allStocks && allStocks.length) {
+                            body.innerHTML += "<strong>目前持股：</strong>" + allStocks.length + " 筆";
+                        }
+                        confirmBtn.disabled = false;
+                    }
+                    pendingImport = { file, msgElementId, statusElementId, switchView };
+                    document.getElementById("importConfirmModal").style.display = "flex";
+                } catch (_) {
+                    const msg = document.getElementById(msgElementId);
+                    if (msg) { msg.className = "msg err"; msg.textContent = "❌ 無法解析 JSON 檔案，請確認格式正確"; }
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        document.getElementById("btnImportCancel").onclick = () => {
+            document.getElementById("importConfirmModal").style.display = "none";
+            pendingImport = null;
+        };
+
+        document.getElementById("btnImportConfirm").onclick = async () => {
+            document.getElementById("importConfirmModal").style.display = "none";
+            if (!pendingImport) return;
+            const { file, msgElementId, statusElementId, switchView } = pendingImport;
+            const mode = document.getElementById("importModeSelect").value;
+            pendingImport = null;
+            await doImport(file, msgElementId, statusElementId, switchView, mode === "replace");
+        };
+
         async function handleImport(file, msgElementId, statusElementId = null, switchView = false) {
             if (!file) return;
+            showImportModal(file, msgElementId, statusElementId, switchView);
+        }
 
+        async function doImport(file, msgElementId, statusElementId = null, switchView = false, clearExisting = true) {
             const msg = document.getElementById(msgElementId);
             const status = statusElementId ? document.getElementById(statusElementId) : null;
             msg.textContent = "⏳ 匯入中…";
@@ -1381,12 +1656,11 @@
                 const r = await fetch("/api/portfolio/import", {
                     method: "POST",
                     headers: hdrJson(),
-                    body: JSON.stringify({ stocks: stocks, clear_existing: true })
+                    body: JSON.stringify({ stocks: stocks, clear_existing: clearExisting })
                 });
                 const j = await r.json();
                 if (!r.ok) throw new Error(j.error || "匯入 API 失敗");
 
-                // 儲存匯入資訊到 localStorage
                 const importInfo = {
                     filename: file.name,
                     importedAt: importedAt,
@@ -1397,13 +1671,15 @@
                 msg.className = "msg ok";
                 msg.textContent = "✅ 匯入完成：" + (j.success || 0) + " 筆成功" +
                     (j.failed ? "，" + j.failed + " 筆失敗" : "") +
-                    `（來源：${file.name}）`;
+                    "（" + (clearExisting ? "已覆蓋舊資料" : "合併模式") + "，來源：" + file.name + "）";
 
                 if (status) {
                     status.innerHTML = "<strong>匯入時間：</strong> " + importedAt;
                 }
 
-                // 重新載入持股列表
+                // 更新上次匯入記錄顯示
+                loadLastImportInfo();
+
                 if (switchView) {
                     setTimeout(() => showView("holdings"), 1500);
                 } else {
@@ -1412,9 +1688,7 @@
             } catch (e) {
                 msg.className = "msg err";
                 msg.textContent = "❌ " + e.message;
-                if (status) {
-                    status.innerHTML = "";
-                }
+                if (status) status.innerHTML = "";
             }
         }
 
@@ -1434,6 +1708,24 @@
         function refreshUidLabel() {
             document.getElementById("uidLabel").textContent = "User ID：" + getUserId();
             document.getElementById("lineUid").value = localStorage.getItem(LINE_UID_KEY) || "";
+        }
+
+        function loadLastImportInfo() {
+            const raw = localStorage.getItem(LAST_IMPORT_INFO_KEY);
+            const el = document.getElementById("lastImportInfo");
+            const det = document.getElementById("lastImportDetails");
+            if (!el || !det) return;
+            if (!raw) { el.style.display = "none"; return; }
+            try {
+                const info = JSON.parse(raw);
+                det.innerHTML =
+                    "檔案：" + escapeHtml(info.filename || "—") + "<br>" +
+                    "時間：" + escapeHtml(info.importedAt || "—") + "<br>" +
+                    "數量：" + (info.count != null ? info.count + " 筆" : "—");
+                el.style.display = "block";
+            } catch (_) {
+                el.style.display = "none";
+            }
         }
 
         // ====== 工具函數 ======
@@ -1483,6 +1775,7 @@
         }
 
         refreshUidLabel();
+        loadLastImportInfo();
         route();
     </script>
 </body>
