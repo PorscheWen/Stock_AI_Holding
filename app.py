@@ -281,6 +281,7 @@ def api_portfolio_export():
             "name": stock.get("name", ""),
             "shares": stock.get("shares", 0),
             "avg_price": stock.get("avg_price", 0),
+            "holding_bucket": stock.get("holding_bucket", "short_term"),
             "note": stock.get("note", ""),
         }
         for stock in stocks

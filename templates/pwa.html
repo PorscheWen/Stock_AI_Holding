@@ -334,14 +334,21 @@
             background: rgba(92, 107, 192, 0.15);
         }
 
-        #shotTbl input,
-
         #stockChart {
             margin: 16px 0;
             border-radius: 8px;
             background: rgba(0, 0, 0, 0.25);
             padding: 12px;
             height: 280px;
+        }
+
+        #shotTbl input {
+            padding: 4px 6px;
+            margin: 0;
+            height: auto;
+            font-size: 0.82rem;
+            width: 100%;
+            min-width: 0;
         }
 
         #shotTbl select {
@@ -497,12 +504,16 @@
                                         <th>分類</th>
                                         <th>股數</th>
                                         <th>均價</th>
+                                        <th>市價</th>
+                                        <th>帳面價值</th>
                                     </tr>
                                 </thead>
                                 <tbody id="shotTbl"></tbody>
                             </table>
                         </div>
                         <button type="button" id="btnImport">✅ 匯入到持股資料庫</button>
+                        <button type="button" id="btnSaveShotImport" class="secondary" style="display:none;">💾 儲存持股（匯出
+                            JSON）</button>
                     </div>
                 </div>
             </div>
@@ -684,6 +695,8 @@
             return j;
         }
 
+        const INLINE_INPUT_STYLE = 'padding:4px 6px;margin:0;height:auto;font-size:0.82rem;width:72px;text-align:right;';
+
         function renderStockRow(tbody, s) {
             const tr = document.createElement("tr");
             const b = s.holding_bucket === "stable_profit" ? "stable_profit" : "short_term";
@@ -696,8 +709,8 @@
             <option value="stable_profit" ${b === "stable_profit" ? "selected" : ""}>穩定獲利</option>
           </select>
         </td>
-        <td>${fmt(s.shares)}</td>
-        <td>${fmt(s.avg_price)}</td>
+        <td><input type="number" step="any" data-patch="shares" data-sym="${escapeHtml(s.symbol)}" value="${escapeHtml(fmtRawForInput(s.shares))}" style="${INLINE_INPUT_STYLE}" /></td>
+        <td><input type="number" step="any" data-patch="avg_price" data-sym="${escapeHtml(s.symbol)}" value="${escapeHtml(fmtRawForInput(s.avg_price))}" style="${INLINE_INPUT_STYLE}" /></td>
         <td>${s.current_price != null ? fmt(s.current_price) : "—"}</td>
         <td><button type="button" class="danger" style="margin:0;padding:6px 8px;font-size:0.75rem;width:auto;" data-sym="${escapeHtml(s.symbol)}">刪</button></td>`;
             tr.querySelector("button").onclick = () => delStock(s.symbol);
@@ -711,6 +724,20 @@
                     loadHoldings();
                 }
             };
+            tr.querySelectorAll("input[data-patch]").forEach((inp) => {
+                inp.addEventListener("blur", async () => {
+                    const field = inp.dataset.patch;
+                    const val = parseFloat(inp.value);
+                    if (isNaN(val)) return;
+                    try {
+                        await patchStock(s.symbol, { [field]: val });
+                        s[field] = val;
+                    } catch (e) {
+                        alert(e.message);
+                        inp.value = fmtRawForInput(s[field]);
+                    }
+                });
+            });
             tbody.appendChild(tr);
         }
 
@@ -891,9 +918,19 @@
                 s.name = tr.querySelector('[data-f="name"]').value.trim();
                 s.shares = parseFloat(tr.querySelector('[data-f="shares"]').value) || 0;
                 s.avg_price = parseFloat(tr.querySelector('[data-f="avg_price"]').value) || 0;
+                const mpVal = parseFloat(tr.querySelector('[data-f="market_price"]').value);
+                s.market_price = isNaN(mpVal) ? null : mpVal;
                 const b = tr.querySelector('[data-f="holding_bucket"]').value;
                 s.holding_bucket = b === "stable_profit" ? "stable_profit" : "short_term";
             });
+        }
+
+        function calcBookValue(sharesVal, avgPriceVal) {
+            const sh = parseFloat(sharesVal) || 0;
+            const ap = parseFloat(avgPriceVal) || 0;
+            if (!sh || !ap) return "—";
+            const v = sh * ap;
+            return v === Math.floor(v) ? String(Math.floor(v)) : v.toFixed(0);
         }
 
         function renderShotTable() {
@@ -907,6 +944,7 @@
                 const nm = escapeHtml(s.name || "");
                 const sp = fmtRawForInput(s.shares);
                 const ap = fmtRawForInput(s.avg_price);
+                const mp = fmtRawForInput(s.market_price || "");
                 const bsel = s.holding_bucket === "stable_profit" ? "stable_profit" : "short_term";
                 tr.innerHTML =
                     '<td><input type="text" data-f="symbol" value="' + sym + '" /></td>' +
@@ -916,7 +954,16 @@
                     '<option value="stable_profit"' + (bsel === "stable_profit" ? " selected" : "") + '>穩定獲利</option>' +
                     "</select></td>" +
                     '<td><input type="number" step="any" data-f="shares" value="' + escapeHtml(sp) + '" /></td>' +
-                    '<td><input type="number" step="any" data-f="avg_price" value="' + escapeHtml(ap) + '" /></td>';
+                    '<td><input type="number" step="any" data-f="avg_price" value="' + escapeHtml(ap) + '" /></td>' +
+                    '<td><input type="number" step="any" data-f="market_price" value="' + escapeHtml(mp) + '" placeholder="選填" /></td>' +
+                    '<td class="bv-cell">' + calcBookValue(sp, ap) + '</td>';
+                // 即時計算帳面價值
+                const sharesInp = tr.querySelector('[data-f="shares"]');
+                const avgInp = tr.querySelector('[data-f="avg_price"]');
+                const bvCell = tr.querySelector('.bv-cell');
+                const updateBV = () => { bvCell.textContent = calcBookValue(sharesInp.value, avgInp.value); };
+                sharesInp.addEventListener('input', updateBV);
+                avgInp.addEventListener('input', updateBV);
                 tbl.appendChild(tr);
             });
         }
@@ -1057,11 +1104,14 @@
                 body: JSON.stringify({ stocks: lastShotStocks }),
             });
             const j = await r.json();
-            alert("✅ 匯入完成：成功 " + (j.success || 0) + " 筆" +
-                (j.failed ? "，失敗 " + j.failed + " 筆" : ""));
-            showView("holdings");
-            switchTab("list");
+            const shotMsg = document.getElementById("shotMsg");
+            shotMsg.className = "msg ok";
+            shotMsg.textContent = "✅ 匯入完成：成功 " + (j.success || 0) + " 筆" +
+                (j.failed ? "，失敗 " + j.failed + " 筆" : "") + "。可點下方「儲存持股」匯出備份。";
+            document.getElementById("btnSaveShotImport").style.display = "";
         };
+
+        document.getElementById("btnSaveShotImport").onclick = () => exportHoldings("shotMsg");
 
         document.getElementById("btnApplyShotBucket").onclick = () => {
             const selected = document.getElementById("shotBulkBucket").value;
@@ -1270,8 +1320,11 @@
                 const a = document.createElement("a");
                 a.href = url;
                 a.download = defaultFilename;
+                a.style.display = "none";
+                document.body.appendChild(a);
                 a.click();
-                URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
 
                 const msg = document.getElementById(msgElementId);
                 if (msg) {
