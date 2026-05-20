@@ -601,20 +601,6 @@
                     <div id="shotMsg" class="msg"></div>
 
                     <div id="shotResult" style="display:none;">
-                        <div class="row" style="margin: 8px 0 10px;">
-                            <div>
-                                <label>匯入分類快速套用</label>
-                                <select id="shotBulkBucket">
-                                    <option value="">不變更（保留逐筆）</option>
-                                    <option value="short_term">全部改為短期持股</option>
-                                    <option value="stable_profit">全部改為穩定獲利（長期）</option>
-                                </select>
-                            </div>
-                            <div style="align-self:end;">
-                                <button type="button" class="secondary" id="btnApplyShotBucket"
-                                    style="margin-top:0;">套用到全部匯入列</button>
-                            </div>
-                        </div>
                         <p class="pill" id="confPill"></p>
                         <div style="overflow-x:auto; margin-top: 12px;">
                             <table>
@@ -633,8 +619,6 @@
                             </table>
                         </div>
                         <button type="button" id="btnImport">✅ 匯入到持股資料庫</button>
-                        <button type="button" id="btnSaveShotImport" class="secondary" style="display:none;">💾 儲存持股（匯出
-                            JSON）</button>
                     </div>
                 </div>
             </div>
@@ -716,6 +700,43 @@
         const HOLDINGS_CACHE_KEY = "holding_stocks_cache_v1";
         const LAST_EXPORT_PATH_KEY = "holding_last_export_path";
         const LAST_IMPORT_INFO_KEY = "holding_last_import_info";
+        const LAST_EXPORT_DIR_HANDLE_KEY = "holding_last_export_dir_handle";
+
+        // 儲存目錄控制碼到 IndexedDB
+        async function saveDirectoryHandle(handle) {
+            try {
+                const db = await openDB();
+                const tx = db.transaction('handles', 'readwrite');
+                await tx.objectStore('handles').put(handle, 'lastExportDir');
+            } catch (e) {
+                console.warn('無法儲存目錄控制碼:', e);
+            }
+        }
+
+        async function getDirectoryHandle() {
+            try {
+                const db = await openDB();
+                const tx = db.transaction('handles', 'readonly');
+                return await tx.objectStore('handles').get('lastExportDir');
+            } catch (e) {
+                console.warn('無法讀取目錄控制碼:', e);
+                return null;
+            }
+        }
+
+        function openDB() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open('HoldingAppDB', 1);
+                request.onerror = () => reject(request.error);
+                request.onsuccess = () => resolve(request.result);
+                request.onupgradeneeded = (e) => {
+                    const db = e.target.result;
+                    if (!db.objectStoreNames.contains('handles')) {
+                        db.createObjectStore('handles');
+                    }
+                };
+            });
+        }
 
         function randomUid() {
             return "pwa_" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
@@ -1305,19 +1326,7 @@
             const shotMsg = document.getElementById("shotMsg");
             shotMsg.className = "msg ok";
             shotMsg.textContent = "✅ 匯入完成：成功 " + (j.success || 0) + " 筆" +
-                (j.failed ? "，失敗 " + j.failed + " 筆" : "") + "。可點下方「儲存持股」匯出備份。";
-            document.getElementById("btnSaveShotImport").style.display = "";
-        };
-
-        document.getElementById("btnSaveShotImport").onclick = () => exportHoldings("shotMsg");
-
-        document.getElementById("btnApplyShotBucket").onclick = () => {
-            const selected = document.getElementById("shotBulkBucket").value;
-            if (!selected) {
-                alert("請先選擇要套用的分類");
-                return;
-            }
-            applyShotBucketToAll(selected);
+                (j.failed ? "，失敗 " + j.failed + " 筆" : "") + "。";
         };
 
         // ====== AI 建議功能 ======
@@ -1342,7 +1351,23 @@
             if (rep.quick_action_zh) {
                 html += "<div class=\"card\" style=\"margin-top:8px;background:rgba(102,187,106,0.12);border-color:rgba(102,187,106,0.35);\">";
                 html += "<div class=\"advisor-head\" style=\"font-size:0.92rem;margin-bottom:4px;\">⚡ 簡短操作建議</div>";
-                html += "<p style=\"margin:0;font-size:0.86rem;line-height:1.45;\">" + escapeHtml(String(rep.quick_action_zh)) + "</p>";
+
+                // 將建議文字分成5句話顯示
+                const text = String(rep.quick_action_zh);
+                const sentences = text.split(/[。！？；]/).filter(s => s.trim()).slice(0, 5);
+
+                if (sentences.length > 0) {
+                    html += "<ol style=\"margin:4px 0;padding-left:1.5rem;font-size:0.86rem;line-height:1.6;\">";
+                    sentences.forEach(sentence => {
+                        if (sentence.trim()) {
+                            html += "<li>" + escapeHtml(sentence.trim()) + "</li>";
+                        }
+                    });
+                    html += "</ol>";
+                } else {
+                    html += "<p style=\"margin:0;font-size:0.86rem;line-height:1.45;\">" + escapeHtml(text) + "</p>";
+                }
+
                 html += "</div>";
             }
             const flt = rep.analysis_filter;
@@ -1489,14 +1514,36 @@
                                 accept: { 'application/json': ['.json'] }
                             }]
                         };
-                        const lastPath = localStorage.getItem(LAST_EXPORT_PATH_KEY);
-                        if (lastPath) opts.startIn = 'downloads';
+
+                        // 嘗試從上次儲存位置開啟
+                        const lastDirHandle = await getDirectoryHandle();
+                        if (lastDirHandle) {
+                            try {
+                                const permission = await lastDirHandle.queryPermission({ mode: 'readwrite' });
+                                if (permission === 'granted' || permission === 'prompt') {
+                                    opts.startIn = lastDirHandle;
+                                }
+                            } catch (e) {
+                                console.warn('無法使用上次儲存位置:', e);
+                            }
+                        }
 
                         const handle = await window.showSaveFilePicker(opts);
                         const writable = await handle.createWritable();
                         await writable.write(dataStr);
                         await writable.close();
+
+                        // 儲存檔案名稱和目錄控制碼
                         localStorage.setItem(LAST_EXPORT_PATH_KEY, handle.name);
+
+                        // 嘗試取得並儲存父目錄控制碼
+                        try {
+                            // 由於無法直接取得父目錄，我們請求使用者選擇目錄權限
+                            const dirHandle = await navigator.storage.getDirectory();
+                            await saveDirectoryHandle(dirHandle);
+                        } catch (e) {
+                            console.warn('無法儲存目錄控制碼:', e);
+                        }
 
                         if (msg) {
                             msg.className = "msg ok";
@@ -1549,8 +1596,52 @@
         const fileImportHoldings = document.getElementById("fileImportHoldings");
         const fileImportHoldingsList = document.getElementById("fileImportHoldingsList");
 
-        document.getElementById("btnImportHoldings").onclick = () => fileImportHoldings.click();
-        document.getElementById("btnImportHoldingsList").onclick = () => fileImportHoldingsList.click();
+        // 匯入時嘗試從上次儲存位置開啟
+        async function openImportPicker(fileInputElement) {
+            if ('showOpenFilePicker' in window) {
+                try {
+                    const opts = {
+                        types: [{
+                            description: 'JSON 檔案',
+                            accept: { 'application/json': ['.json'] }
+                        }],
+                        multiple: false
+                    };
+
+                    // 嘗試從上次儲存位置開啟
+                    const lastDirHandle = await getDirectoryHandle();
+                    if (lastDirHandle) {
+                        try {
+                            const permission = await lastDirHandle.queryPermission({ mode: 'read' });
+                            if (permission === 'granted' || permission === 'prompt') {
+                                opts.startIn = lastDirHandle;
+                            }
+                        } catch (e) {
+                            console.warn('無法使用上次儲存位置:', e);
+                        }
+                    }
+
+                    const [handle] = await window.showOpenFilePicker(opts);
+                    const file = await handle.getFile();
+
+                    // 觸發對應的處理流程
+                    if (fileInputElement === fileImportHoldings) {
+                        await handleImport(file, "importMsg", "importStatus", true);
+                    } else {
+                        await handleImport(file, "holdMsg", null, false);
+                    }
+                    return;
+                } catch (e) {
+                    if (e.name === 'AbortError') return; // 使用者取消
+                    console.warn('File System Access API 失敗，使用傳統方式:', e);
+                }
+            }
+            // 回退到傳統 input file
+            fileInputElement.click();
+        }
+
+        document.getElementById("btnImportHoldings").onclick = () => openImportPicker(fileImportHoldings);
+        document.getElementById("btnImportHoldingsList").onclick = () => openImportPicker(fileImportHoldingsList);
 
         // JSON 拖放區設定
         function setupJsonDropZone(zoneId, msgElementId, statusElementId, switchView) {

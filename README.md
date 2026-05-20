@@ -2,7 +2,14 @@
 
 獨立 **PWA**：首頁為 **Agent 操作建議**（一鍵分析、伺服器保留歷史）、紀錄持股、以 **截圖（Claude Vision）** 批次寫入，並可透過 **LINE Rich Menu** 切換畫面。後端為 **Flask**，可部署於 **Render**（見 `render.yaml`）。
 
-## ✨ 最新功能（v2.0）
+## ✨ 最新功能（v2.1）
+
+### 📱 LINE 推送通知 **NEW!**
+- 每次持股更新自動推送 LINE 通知
+- 包含操作類型、更新內容、持股總數
+- 附帶網頁連結，點擊直接跳轉
+- 支援新增、更新、刪除、匯入等所有操作
+- 詳細說明：[NOTIFICATION_GUIDE.md](NOTIFICATION_GUIDE.md)
 
 ### 🎯 Tab 切換介面
 - 持股管理頁面採用 Tab 設計，清晰分類功能
@@ -117,18 +124,22 @@ python setup_rich_menu.py
 
 ## API（皆需標頭 `X-User-ID`）
 
-| 方法 | 路徑 | 說明 |
-|------|------|------|
-| GET | `/api/portfolio` | 持股清單 |
-| GET | `/api/portfolio/prices` | 持股 + 即時價 |
-| POST | `/api/portfolio` | JSON：`symbol`, `shares`, `avg_price`, `note` |
-| DELETE | `/api/portfolio/<symbol>` | 刪除一檔 |
-| DELETE | `/api/portfolio` | 清空 |
-| POST | `/api/screenshot` | `multipart/form-data` 欄位 `image` |
-| POST | `/api/screenshot/import` | JSON：`{ "stocks": [...] }` |
-| POST | `/api/advisor/run` | 一鍵分析；股價來自 Yahoo（yfinance）並以 Stooq 比對；回傳含 `advice_date`、`quote_fetched_at`、`advice_content`（全文）、各檔 `advice_content`，並**儲存** |
-| GET | `/api/advisor/latest` | 讀取最近一次儲存之建議（同上欄位） |
-| GET | `/api/advisor/history?limit=10` | 建議歷史摘要（含 `advice_date`、`quote_fetched_at`、`has_full_text`） |
+| 方法 | 路徑 | 說明 | 推送通知 |
+|------|------|------|---------|
+| GET | `/api/portfolio` | 持股清單 | - |
+| GET | `/api/portfolio/prices` | 持股 + 即時價 | - |
+| POST | `/api/portfolio` | JSON：`symbol`, `shares`, `avg_price`, `note` | ✅ 新增持股 |
+| PATCH | `/api/portfolio/<symbol>` | 更新持股資訊 | ✅ 更新持股 |
+| DELETE | `/api/portfolio/<symbol>` | 刪除一檔 | ✅ 刪除持股 |
+| DELETE | `/api/portfolio` | 清空 | ✅ 清空持股 |
+| POST | `/api/screenshot` | `multipart/form-data` 欄位 `image` | - |
+| POST | `/api/screenshot/import` | JSON：`{ "stocks": [...] }` | ✅ 截圖匯入 |
+| POST | `/api/portfolio/import` | JSON：`{ "stocks": [...], "clear_existing": bool }` | ✅ 匯入持股 |
+| POST | `/api/advisor/run` | 一鍵分析；股價來自 Yahoo（yfinance）並以 Stooq 比對；回傳含 `advice_date`、`quote_fetched_at`、`advice_content`（全文）、各檔 `advice_content`，並**儲存** | - |
+| GET | `/api/advisor/latest` | 讀取最近一次儲存之建議（同上欄位） | - |
+| GET | `/api/advisor/history?limit=10` | 建議歷史摘要（含 `advice_date`、`quote_fetched_at`、`has_full_text`） | - |
+
+**推送通知說明**：標註 ✅ 的 API 會在操作成功後，自動向用戶的 LINE 發送推送通知（需設定 `LINE_CHANNEL_ACCESS_TOKEN`）。通知包含操作詳情和網頁連結。
 
 ## 目錄結構
 
@@ -137,18 +148,23 @@ Stock_AI_Holding/
 ├── app.py                 # Flask：PWA + API
 ├── render.yaml            # Render Blueprint（Web Service）
 ├── setup_rich_menu.py     # Rich Menu 部署
+├── test_notification.py   # 推送通知測試腳本
 ├── Dockerfile, docker-compose.yml
 ├── config/settings.py
 ├── database/portfolio_db.py
 ├── database/advisor_store.py
 ├── agents/screenshot_agent.py
 ├── agents/holding_advisor_agent.py
+├── utils/notification.py  # 推送通知模組
 ├── templates/pwa.html
-└── static/manifest.json, sw.js
+├── static/manifest.json, sw.js
+├── NOTIFICATION_GUIDE.md  # 推送通知完整說明
+└── NOTIFICATION_COMPLETE.md  # 推送通知功能總覽
 ```
 
 ## 注意
 
 - Rich Menu 的 **URI 必須 HTTPS**（LINE 規定）。  
 - 截圖辨識需有效的 Anthropic API Key 或 OAuth Token。  
+- **推送通知**：需設定 `LINE_CHANNEL_ACCESS_TOKEN`，用戶 ID 必須為真實 LINE User ID（本地 `pwa_` 開頭的 ID 不會推送）。詳見 [NOTIFICATION_GUIDE.md](NOTIFICATION_GUIDE.md)。
 - 本專案與 `Stock_AI_MultiAgent` 分離；僅複用持股 DB 與截圖 Agent 邏輯。

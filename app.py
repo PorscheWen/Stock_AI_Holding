@@ -13,6 +13,7 @@ from agents.holding_advisor_agent import run_for_portfolio
 from database.portfolio_db import PortfolioDB
 from database import advisor_store
 from stock_display_zh import resolve_stock_name_zh
+from utils import notification
 
 load_dotenv()
 
@@ -77,15 +78,26 @@ def api_portfolio_add():
     symbol = str(data.get("symbol", "")).strip().upper()
     if not symbol:
         return jsonify({"error": "symbol required"}), 400
+    
+    shares = float(data.get("shares", 0))
+    avg_price = float(data.get("avg_price", 0))
+    name = str(data.get("name", ""))
+    
     ok = db.add_stock(
         uid,
         symbol,
-        float(data.get("shares", 0)),
-        float(data.get("avg_price", 0)),
+        shares,
+        avg_price,
         str(data.get("note", "")),
-        str(data.get("name", "")),
+        name,
         str(data.get("holding_bucket", "short_term")),
     )
+    
+    # 发送通知
+    if ok:
+        total_stocks = len(db.get_portfolio(uid))
+        notification.notify_stock_added(uid, symbol, name, shares, avg_price, total_stocks)
+    
     return jsonify({"success": ok, "symbol": symbol})
 
 
@@ -117,6 +129,13 @@ def api_portfolio_patch(symbol: str):
     if not updates:
         return jsonify({"error": "no updatable fields"}), 400
     ok = db.update_stock(uid, sym, **updates)
+    
+    # 发送通知
+    if ok:
+        stock_name = updates.get("name", sym)
+        total_stocks = len(db.get_portfolio(uid))
+        notification.notify_stock_updated(uid, sym, stock_name, updates, total_stocks)
+    
     return jsonify({"success": ok, "symbol": sym})
 
 
@@ -125,7 +144,14 @@ def api_portfolio_remove(symbol: str):
     uid, err = _require_user_id()
     if err:
         return err
-    ok = db.remove_stock(uid, symbol.upper())
+    sym = symbol.upper()
+    ok = db.remove_stock(uid, sym)
+    
+    # 发送通知
+    if ok:
+        total_stocks = len(db.get_portfolio(uid))
+        notification.notify_stock_deleted(uid, sym, total_stocks)
+    
     return jsonify({"success": ok})
 
 
@@ -135,6 +161,10 @@ def api_portfolio_clear():
     if err:
         return err
     db.clear_portfolio(uid)
+    
+    # 发送通知
+    notification.notify_portfolio_cleared(uid)
+    
     return jsonify({"success": True})
 
 
@@ -195,7 +225,20 @@ def api_screenshot_import():
     stocks = data.get("stocks", [])
     if not stocks:
         return jsonify({"error": "stocks required"}), 400
-    return jsonify(db.batch_add_stocks(uid, stocks))
+    
+    result = db.batch_add_stocks(uid, stocks)
+    
+    # 发送通知
+    if result.get("success", 0) > 0:
+        total_stocks = len(db.get_portfolio(uid))
+        notification.notify_screenshot_imported(
+            uid, 
+            result.get("success", 0), 
+            result.get("failed", 0), 
+            total_stocks
+        )
+    
+    return jsonify(result)
 
 
 @app.post("/api/advisor/run")
@@ -308,6 +351,17 @@ def api_portfolio_import():
     
     # 批量匯入
     result = db.batch_add_stocks(uid, stocks)
+    
+    # 发送通知
+    if result.get("success", 0) > 0:
+        total_stocks = len(db.get_portfolio(uid))
+        notification.notify_portfolio_imported(
+            uid, 
+            result.get("success", 0), 
+            result.get("failed", 0), 
+            total_stocks
+        )
+    
     return jsonify(result), 200
 
 
