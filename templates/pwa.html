@@ -629,7 +629,8 @@
             }
 
             .import-btn-desktop-only,
-            .import-hint-desktop {
+            .import-hint-desktop,
+            .export-btn-desktop-only {
                 display: none !important;
             }
 
@@ -649,6 +650,11 @@
                 display: none !important;
             }
         }
+
+        .export-btn-desktop-only {
+            display: inline-block;
+            width: 100%;
+        }
     </style>
 </head>
 
@@ -656,7 +662,7 @@
     <header>
         <h1>📊 持股 Holding</h1>
         <div class="sub" id="uidLabel"></div>
-        <div class="sub" style="font-size:0.7rem;opacity:0.6;">版本 2026-05-21-v5</div>
+        <div class="sub" style="font-size:0.7rem;opacity:0.6;">版本 2026-05-21-v8</div>
     </header>
     <main>
         <!-- AI建議頁面 -->
@@ -774,17 +780,18 @@
                     </div>
                     <div class="import-drop-zone" id="importDropZoneList">
                         <div class="row" style="margin-bottom:0;">
-                            <button type="button" class="secondary" id="btnExportHoldingsList">📥 匯出</button>
-                            <label for="fileImportHoldingsList" class="import-file-btn secondary import-file-btn-mobile-only">📤 匯入</label>
-                            <button type="button" class="secondary import-btn-desktop-only" id="btnImportHoldingsList">📤 匯入</button>
+                            <button type="button" class="secondary" id="btnExportHoldingsList">💾 儲存本機</button>
+                            <button type="button" class="secondary" id="btnImportFromLocalList">📤 本機匯入</button>
+                            <label for="fileImportHoldingsList" class="import-file-btn secondary import-file-btn-mobile-only">📁 匯入檔案</label>
+                            <button type="button" class="secondary import-btn-desktop-only" id="btnImportHoldingsList">📁 匯入檔案</button>
                         </div>
-                        <button type="button" class="secondary import-btn-desktop-only" id="btnImportFromLastList"
-                            style="margin-top:6px;font-size:0.78rem;padding:8px;">從上次匯出檔匯入</button>
+                        <button type="button" class="secondary export-btn-desktop-only" id="btnDownloadJsonList"
+                            style="margin-top:6px;font-size:0.78rem;padding:8px;">下載 JSON 檔（電腦）</button>
                         <div class="last-export-path-info"
                             style="font-size:0.75rem;color:var(--muted);margin-top:8px;padding:8px;background:rgba(0,0,0,0.2);border-radius:6px;display:none;">
                         </div>
-                        <div class="import-hint-mobile" style="font-size:0.72rem;color:var(--muted);margin-top:6px;text-align:center;">手機：點「匯入」選擇 JSON 備份檔</div>
-                        <div class="import-hint-desktop" style="font-size:0.72rem;color:var(--muted);margin-top:6px;text-align:center;">電腦：匯出會記住位置；匯入可讀取該檔或拖放 JSON</div>
+                        <div class="import-hint-mobile" style="font-size:0.72rem;color:var(--muted);margin-top:6px;text-align:center;">手機／LINE：請用「儲存本機」＋「本機匯入」（不需下載檔案）</div>
+                        <div class="import-hint-desktop" style="font-size:0.72rem;color:var(--muted);margin-top:6px;text-align:center;">備份存於瀏覽器本機；可「本機匯入」或選 JSON 檔／拖放</div>
                     </div>
                     <input type="file" id="fileImportHoldingsList" class="hidden-file-input" accept=".json,application/json,text/json" />
                     <div id="stockChart"></div>
@@ -827,17 +834,18 @@
                 <h3 style="margin-top:0; color: var(--text);">💾 持股資料備份</h3>
                 <div class="import-drop-zone" id="importDropZoneSettings">
                     <div class="row" style="margin-bottom:0;">
-                        <label for="fileImportHoldings" class="import-file-btn secondary import-file-btn-mobile-only">📤 匯入持股</label>
-                        <button type="button" class="secondary import-btn-desktop-only" id="btnImportHoldings">📤 匯入持股</button>
-                        <button type="button" id="btnExportHoldings">📥 匯出持股</button>
+                        <button type="button" class="secondary" id="btnImportFromLocalSettings">📤 本機匯入</button>
+                        <label for="fileImportHoldings" class="import-file-btn secondary import-file-btn-mobile-only">📁 匯入檔案</label>
+                        <button type="button" class="secondary import-btn-desktop-only" id="btnImportHoldings">📁 匯入檔案</button>
+                        <button type="button" id="btnExportHoldings">💾 儲存本機</button>
                     </div>
-                    <button type="button" class="secondary import-btn-desktop-only" id="btnImportFromLastSettings"
-                        style="margin-top:6px;font-size:0.78rem;padding:8px;">從上次匯出檔匯入</button>
+                    <button type="button" class="secondary export-btn-desktop-only" id="btnDownloadJsonSettings"
+                        style="margin-top:6px;font-size:0.78rem;padding:8px;">下載 JSON 檔（電腦）</button>
                     <div class="last-export-path-info"
                         style="font-size:0.75rem;color:var(--muted);margin-top:8px;padding:8px;background:rgba(0,0,0,0.2);border-radius:6px;display:none;">
                     </div>
-                    <div class="import-hint-mobile" style="font-size:0.72rem;color:var(--muted);margin-top:6px;text-align:center;">手機：點「匯入持股」選擇 JSON 備份檔</div>
-                    <div class="import-hint-desktop" style="font-size:0.72rem;color:var(--muted);margin-top:6px;text-align:center;">電腦：匯出會記住位置；匯入可讀取該檔或拖放 JSON</div>
+                    <div class="import-hint-mobile" style="font-size:0.72rem;color:var(--muted);margin-top:6px;text-align:center;">手機／LINE：請用「儲存本機」＋「本機匯入」（不需下載檔案）</div>
+                    <div class="import-hint-desktop" style="font-size:0.72rem;color:var(--muted);margin-top:6px;text-align:center;">備份存於瀏覽器本機；可「本機匯入」或選 JSON 檔／拖放</div>
                 </div>
                 <div id="lastImportInfo"
                     style="font-size: 0.75rem; color: var(--muted); margin-bottom: 10px; padding: 8px; background: rgba(0,0,0,0.2); border-radius: 6px; display: none;">
@@ -908,6 +916,7 @@
         const LINE_UID_KEY = "holding_line_user_id";
         const HOLDINGS_CACHE_KEY = "holding_stocks_cache_v1";
         const LAST_EXPORT_PATH_KEY = "holding_last_export_path";
+        const LAST_EXPORT_JSON_KEY = "holding_last_export_json";
         const LAST_IMPORT_INFO_KEY = "holding_last_import_info";
 
         async function saveExportFileHandle(handle) {
@@ -931,9 +940,10 @@
             }
         }
 
-        function saveExportPathMeta(filename) {
+        function saveLocalBackupMeta(count) {
             localStorage.setItem(LAST_EXPORT_PATH_KEY, JSON.stringify({
-                filename: filename,
+                storage: "local",
+                count: count,
                 savedAt: new Date().toLocaleString("zh-TW", {
                     year: "numeric", month: "2-digit", day: "2-digit",
                     hour: "2-digit", minute: "2-digit",
@@ -951,14 +961,33 @@
                 }
                 try {
                     const info = JSON.parse(raw);
-                    el.innerHTML = "<strong>上次儲存位置：</strong> " +
-                        escapeHtml(info.filename || "—") +
+                    const cnt = info.count != null ? info.count + " 筆" : "—";
+                    el.innerHTML = "<strong>本機備份：</strong> " + cnt +
                         (info.savedAt ? "（" + escapeHtml(info.savedAt) + "）" : "");
                     el.style.display = "block";
                 } catch (_) {
                     el.style.display = "none";
                 }
             });
+        }
+
+        function downloadJsonFromLocal() {
+            const raw = localStorage.getItem(LAST_EXPORT_JSON_KEY);
+            if (!raw) {
+                alert("尚無本機備份，請先按「儲存本機」");
+                return;
+            }
+            const name = "持股備份_" + new Date().toISOString().slice(0, 10) + ".json";
+            const blob = new Blob([raw], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = name;
+            a.style.display = "none";
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
         }
 
         function openDB() {
@@ -1899,6 +1928,60 @@
         let pendingImport = null;
         let pendingImportStocks = [];
 
+        function saveHoldingsToLocalStorage(dataStr, count, msgElementId) {
+            localStorage.setItem(LAST_EXPORT_JSON_KEY, dataStr);
+            saveLocalBackupMeta(count);
+            const msg = msgElementId ? document.getElementById(msgElementId) : null;
+            const when = new Date().toLocaleString("zh-TW", {
+                month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
+            });
+            const text = "✅ 已儲存至本機（" + count + " 筆，" + when + "）";
+            if (msg) {
+                msg.className = "msg ok";
+                msg.textContent = text;
+            } else {
+                alert(text);
+            }
+        }
+
+        async function importFromLocalExport(msgElementId, statusElementId, switchView) {
+            const raw = localStorage.getItem(LAST_EXPORT_JSON_KEY);
+            if (!raw) {
+                const msg = document.getElementById(msgElementId);
+                if (msg) {
+                    msg.className = "msg err";
+                    msg.textContent = "❌ 尚無本機備份，請先按「儲存本機」";
+                } else {
+                    alert("尚無本機備份，請先按「儲存本機」");
+                }
+                return;
+            }
+            try {
+                const parsed = JSON.parse(raw);
+                if (!Array.isArray(parsed)) throw new Error("本機備份格式錯誤");
+                renderImportPreviewTable(parsed);
+                pendingImport = {
+                    file: new File([raw], "本機備份.json", { type: "application/json" }),
+                    msgElementId,
+                    statusElementId,
+                    switchView,
+                    fromLocal: true,
+                };
+                const body = document.getElementById("importConfirmBody");
+                if (body) {
+                    body.innerHTML = "<strong>來源：</strong>本機備份<br><strong>持股筆數：</strong>" + parsed.length + " 筆";
+                }
+                document.getElementById("btnImportConfirm").disabled = false;
+                document.getElementById("importConfirmModal").style.display = "flex";
+            } catch (e) {
+                const msg = document.getElementById(msgElementId);
+                if (msg) {
+                    msg.className = "msg err";
+                    msg.textContent = "❌ 本機備份無法解析：" + e.message;
+                }
+            }
+        }
+
         function normalizeImportStockRow(raw) {
             const s = { ...raw };
             let sym = String(s.symbol || "").trim().toUpperCase();
@@ -1964,97 +2047,39 @@
                 msg.className = "msg";
                 const localCount = allStocks && allStocks.length ? allStocks.length : null;
                 msg.textContent = localCount != null
-                    ? "⏳ 匯出 " + localCount + " 筆持股中..."
-                    : "⏳ 匯出中...";
+                    ? "⏳ 儲存本機 " + localCount + " 筆持股中..."
+                    : "⏳ 儲存本機中...";
             }
             try {
                 const r = await fetch("/api/portfolio/export", { headers: hdrOnly() });
                 const j = await r.json();
-                if (!r.ok) throw new Error(j.error || "匯出失敗");
+                if (!r.ok) throw new Error(j.error || "儲存失敗");
 
-                const defaultFilename = `持股備份_${new Date().toISOString().slice(0, 10)}.json`;
                 const dataStr = JSON.stringify(j.stocks, null, 2);
-
-                // 手機不支援 File System Access API，直接下載
-                if (!useNativeFileInputOnly() && "showSaveFilePicker" in window) {
-                    try {
-                        const opts = {
-                            suggestedName: defaultFilename,
-                            types: [{
-                                description: 'JSON 檔案',
-                                accept: { 'application/json': ['.json'] }
-                            }]
-                        };
-
-                        const lastHandle = await getExportFileHandle();
-                        if (lastHandle) {
-                            try {
-                                const perm = await lastHandle.queryPermission({ mode: 'readwrite' });
-                                if (perm === 'granted' || perm === 'prompt') {
-                                    opts.suggestedName = lastHandle.name;
-                                }
-                            } catch (e) {
-                                console.warn('無法使用上次儲存檔案:', e);
-                            }
-                        }
-
-                        const handle = await window.showSaveFilePicker(opts);
-                        const writable = await handle.createWritable();
-                        await writable.write(dataStr);
-                        await writable.close();
-
-                        await saveExportFileHandle(handle);
-                        saveExportPathMeta(handle.name);
-
-                        if (msg) {
-                            msg.className = "msg ok";
-                            msg.textContent = `✅ 已儲存至：${handle.name}（${j.count} 筆持股）`;
-                        } else {
-                            alert(`✅ 已儲存至：${handle.name}（${j.count} 筆持股）`);
-                        }
-                        return;
-                    } catch (e) {
-                        if (e.name !== 'AbortError') {
-                            console.warn('showSaveFilePicker 失敗，使用傳統下載:', e);
-                        } else {
-                            if (msg) { msg.className = "msg"; msg.textContent = ""; }
-                            return;
-                        }
-                    }
-                }
-
-                // 傳統下載（回退方案）
-                const dataBlob = new Blob([dataStr], { type: "application/json" });
-                const url = URL.createObjectURL(dataBlob);
-                const a = document.createElement("a");
-                a.href = url;
-                a.download = defaultFilename;
-                a.style.display = "none";
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                setTimeout(() => URL.revokeObjectURL(url), 1000);
-
-                saveExportPathMeta(defaultFilename);
-
-                if (msg) {
-                    msg.className = "msg ok";
-                    msg.textContent = `✅ 已下載持股資料（${j.count} 筆）至下載資料夾：${defaultFilename}`;
-                } else {
-                    alert(`✅ 已下載持股資料（${j.count} 筆）至下載資料夾：${defaultFilename}`);
-                }
+                const count = j.count != null ? j.count : (j.stocks ? j.stocks.length : 0);
+                saveHoldingsToLocalStorage(dataStr, count, msgElementId);
             } catch (e) {
                 if (msg) {
                     msg.className = "msg err";
                     msg.textContent = "❌ " + e.message;
                 } else {
-                    alert("❌ 匯出失敗：" + e.message);
+                    alert("❌ 儲存失敗：" + e.message);
                 }
             }
         }
 
         document.getElementById("btnExportHoldings").onclick = () => exportHoldings("importMsg");
         document.getElementById("btnExportHoldingsList").onclick = () => exportHoldings("holdMsg");
+
+        const btnDownloadJsonList = document.getElementById("btnDownloadJsonList");
+        if (btnDownloadJsonList) btnDownloadJsonList.onclick = () => downloadJsonFromLocal();
+        const btnDownloadJsonSettings = document.getElementById("btnDownloadJsonSettings");
+        if (btnDownloadJsonSettings) btnDownloadJsonSettings.onclick = () => downloadJsonFromLocal();
+
+        document.getElementById("btnImportFromLocalList").onclick = () =>
+            importFromLocalExport("holdMsg", null, false);
+        document.getElementById("btnImportFromLocalSettings").onclick = () =>
+            importFromLocalExport("importMsg", "importStatus", true);
 
         const fileImportHoldings = document.getElementById("fileImportHoldings");
         const fileImportHoldingsList = document.getElementById("fileImportHoldingsList");
@@ -2132,17 +2157,6 @@
             importFromSavedLocation(fileImportHoldings, "importMsg", "importStatus", true);
         document.getElementById("btnImportHoldingsList").onclick = () =>
             importFromSavedLocation(fileImportHoldingsList, "holdMsg", null, false);
-
-        const btnImportFromLastList = document.getElementById("btnImportFromLastList");
-        if (btnImportFromLastList) {
-            btnImportFromLastList.onclick = () =>
-                importFromSavedLocation(fileImportHoldingsList, "holdMsg", null, false);
-        }
-        const btnImportFromLastSettings = document.getElementById("btnImportFromLastSettings");
-        if (btnImportFromLastSettings) {
-            btnImportFromLastSettings.onclick = () =>
-                importFromSavedLocation(fileImportHoldings, "importMsg", "importStatus", true);
-        }
 
         // JSON 拖放區設定
         function setupJsonDropZone(zoneId, msgElementId, statusElementId, switchView) {

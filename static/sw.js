@@ -1,5 +1,5 @@
 /* Stock_AI_Holding PWA — Service Worker */
-const CACHE = "stock-holding-v8";
+const CACHE = "stock-holding-v10";
 const PRECACHE = ["/static/manifest.json"];
 
 self.addEventListener("install", (e) => {
