@@ -533,6 +533,34 @@
             font-size: 0.8rem;
             margin: 0;
         }
+
+        #tblBody input,
+        #tblBody select {
+            padding: 4px 6px;
+            margin: 0;
+            height: auto;
+            font-size: 0.82rem;
+            min-width: 0;
+        }
+
+        #tblBody input[type="text"] {
+            width: 100%;
+        }
+
+        #tblBody input[data-patch="symbol"] {
+            min-width: 5.5rem;
+            width: 5.5rem;
+        }
+
+        #tblBody input[data-patch="name"] {
+            min-width: 5rem;
+            width: 6.5rem;
+        }
+
+        #tblBody input[data-patch="note"] {
+            min-width: 4rem;
+            width: 5rem;
+        }
     </style>
 </head>
 
@@ -540,7 +568,7 @@
     <header>
         <h1>📊 持股 Holding</h1>
         <div class="sub" id="uidLabel"></div>
-        <div class="sub" style="font-size:0.7rem;opacity:0.6;">版本 2026-05-21-v3</div>
+        <div class="sub" style="font-size:0.7rem;opacity:0.6;">版本 2026-05-21-v4</div>
     </header>
     <main>
         <!-- AI建議頁面 -->
@@ -678,8 +706,9 @@
                                     <th>分類</th>
                                     <th>股數</th>
                                     <th>均價</th>
+                                    <th>備註</th>
                                     <th>現價</th>
-                                    <th>損益率</th>
+                                    <th>損益%</th>
                                     <th></th>
                                 </tr>
                             </thead>
@@ -971,64 +1000,157 @@
             return j;
         }
 
-        const INLINE_INPUT_STYLE = 'padding:4px 6px;margin:0;height:auto;font-size:0.82rem;width:72px;text-align:right;';
+        const NUM_INPUT_STYLE = 'width:4.5rem;text-align:right;';
+
+        function normalizeSymbolInput(sym) {
+            let s = String(sym || "").trim().toUpperCase();
+            if (/^\d{4,6}$/.test(s)) s = s + ".TW";
+            return s;
+        }
 
         function renderStockRow(tbody, s) {
             const tr = document.createElement("tr");
+            const origSym = s.symbol;
             const b = s.holding_bucket === "stable_profit" ? "stable_profit" : "short_term";
+            const priceForInput = s.price_override != null ? s.price_override : s.current_price;
+            const pnlForInput = s.pnl_pct != null ? fmtRawForInput(s.pnl_pct) : "";
 
-            // 計算損益率顯示
-            let pnlDisplay = "—";
-            let pnlColor = "var(--text)";
-            if (s.pnl_pct != null) {
-                const pnl = parseFloat(s.pnl_pct);
-                pnlDisplay = fmt(pnl) + "%";
-                if (pnl > 0) {
-                    pnlColor = "var(--ok)";
-                } else if (pnl < 0) {
-                    pnlColor = "var(--err)";
-                }
-            }
+            tr.innerHTML =
+                '<td><input type="text" data-patch="symbol" data-orig-sym="' + escapeHtml(origSym) + '" value="' + escapeHtml(s.symbol || "") + '" /></td>' +
+                '<td><input type="text" data-patch="name" value="' + escapeHtml(s.name || "") + '" /></td>' +
+                '<td><select data-patch="holding_bucket" style="min-width:6.5rem;">' +
+                '<option value="short_term"' + (b === "short_term" ? " selected" : "") + '>短期持股</option>' +
+                '<option value="stable_profit"' + (b === "stable_profit" ? " selected" : "") + '>穩定獲利</option>' +
+                '</select></td>' +
+                '<td><input type="number" step="any" data-patch="shares" value="' + escapeHtml(fmtRawForInput(s.shares)) + '" style="' + NUM_INPUT_STYLE + '" /></td>' +
+                '<td><input type="number" step="any" data-patch="avg_price" value="' + escapeHtml(fmtRawForInput(s.avg_price)) + '" style="' + NUM_INPUT_STYLE + '" /></td>' +
+                '<td><input type="text" data-patch="note" value="' + escapeHtml(s.note || "") + '" /></td>' +
+                '<td><input type="number" step="any" data-patch="price_override" value="' + escapeHtml(fmtRawForInput(priceForInput)) + '" style="' + NUM_INPUT_STYLE + '" title="可覆寫現價；留空則用即時報價" /></td>' +
+                '<td><input type="number" step="any" data-patch="pnl_pct" value="' + escapeHtml(pnlForInput) + '" style="' + NUM_INPUT_STYLE + '" title="修改後依現價反推均價" /></td>' +
+                '<td><button type="button" class="danger" style="margin:0;padding:6px 8px;font-size:0.75rem;width:auto;">刪</button></td>';
 
-            tr.innerHTML = `
-        <td><strong>${escapeHtml(s.symbol)}</strong></td>
-        <td>${escapeHtml(s.name || "—")}</td>
-        <td>
-          <select data-patch="holding_bucket" data-sym="${escapeHtml(s.symbol)}" style="width:auto;min-width:7rem;">
-            <option value="short_term" ${b === "short_term" ? "selected" : ""}>短期持股</option>
-            <option value="stable_profit" ${b === "stable_profit" ? "selected" : ""}>穩定獲利</option>
-          </select>
-        </td>
-        <td><input type="number" step="any" data-patch="shares" data-sym="${escapeHtml(s.symbol)}" value="${escapeHtml(fmtRawForInput(s.shares))}" style="${INLINE_INPUT_STYLE}" /></td>
-        <td><input type="number" step="any" data-patch="avg_price" data-sym="${escapeHtml(s.symbol)}" value="${escapeHtml(fmtRawForInput(s.avg_price))}" style="${INLINE_INPUT_STYLE}" /></td>
-        <td>${s.current_price != null ? fmt(s.current_price) : "—"}</td>
-        <td style="color:${pnlColor};font-weight:600;">${pnlDisplay}</td>
-        <td><button type="button" class="danger" style="margin:0;padding:6px 8px;font-size:0.75rem;width:auto;" data-sym="${escapeHtml(s.symbol)}">刪</button></td>`;
-            tr.querySelector("button").onclick = () => delStock(s.symbol);
-            const sel = tr.querySelector("select[data-patch]");
-            sel.onchange = async () => {
+            const getSym = () => tr.dataset.currentSym || origSym;
+            tr.dataset.currentSym = origSym;
+
+            tr.querySelector("button").onclick = () => delStock(getSym());
+
+            tr.querySelector('select[data-patch="holding_bucket"]').onchange = async (e) => {
                 try {
-                    await patchStock(s.symbol, { holding_bucket: sel.value });
-                    s.holding_bucket = sel.value;
-                } catch (e) {
-                    alert(e.message);
+                    await patchStock(getSym(), { holding_bucket: e.target.value });
+                    s.holding_bucket = e.target.value;
+                } catch (err) {
+                    alert(err.message);
                     loadHoldings();
                 }
             };
-            tr.querySelectorAll("input[data-patch]").forEach((inp) => {
-                inp.addEventListener("blur", async () => {
-                    const field = inp.dataset.patch;
-                    const val = parseFloat(inp.value);
-                    if (isNaN(val)) return;
-                    try {
-                        await patchStock(s.symbol, { [field]: val });
-                        s[field] = val;
-                    } catch (e) {
-                        alert(e.message);
-                        inp.value = fmtRawForInput(s[field]);
-                    }
-                });
+
+            tr.querySelector('input[data-patch="symbol"]').addEventListener("blur", async (e) => {
+                const newSym = normalizeSymbolInput(e.target.value);
+                if (!newSym || newSym === getSym()) {
+                    e.target.value = getSym();
+                    return;
+                }
+                try {
+                    const j = await patchStock(getSym(), { symbol: newSym });
+                    tr.dataset.currentSym = j.symbol || newSym;
+                    s.symbol = tr.dataset.currentSym;
+                    e.target.value = s.symbol;
+                    await loadHoldings();
+                } catch (err) {
+                    alert(err.message);
+                    e.target.value = getSym();
+                }
             });
+
+            tr.querySelector('input[data-patch="name"]').addEventListener("blur", async (e) => {
+                const val = e.target.value.trim();
+                if (val === (s.name || "")) return;
+                try {
+                    await patchStock(getSym(), { name: val });
+                    s.name = val;
+                } catch (err) {
+                    alert(err.message);
+                    e.target.value = s.name || "";
+                }
+            });
+
+            tr.querySelector('input[data-patch="note"]').addEventListener("blur", async (e) => {
+                const val = e.target.value.trim();
+                if (val === (s.note || "")) return;
+                try {
+                    await patchStock(getSym(), { note: val });
+                    s.note = val;
+                } catch (err) {
+                    alert(err.message);
+                    e.target.value = s.note || "";
+                }
+            });
+
+            tr.querySelector('input[data-patch="shares"]').addEventListener("blur", async (e) => {
+                const val = parseFloat(e.target.value);
+                if (isNaN(val) || val === parseFloat(s.shares)) return;
+                try {
+                    await patchStock(getSym(), { shares: val });
+                    s.shares = val;
+                    await loadHoldings();
+                } catch (err) {
+                    alert(err.message);
+                    e.target.value = fmtRawForInput(s.shares);
+                }
+            });
+
+            tr.querySelector('input[data-patch="avg_price"]').addEventListener("blur", async (e) => {
+                const val = parseFloat(e.target.value);
+                if (isNaN(val) || val === parseFloat(s.avg_price)) return;
+                try {
+                    await patchStock(getSym(), { avg_price: val });
+                    s.avg_price = val;
+                    await loadHoldings();
+                } catch (err) {
+                    alert(err.message);
+                    e.target.value = fmtRawForInput(s.avg_price);
+                }
+            });
+
+            tr.querySelector('input[data-patch="price_override"]').addEventListener("blur", async (e) => {
+                const raw = e.target.value.trim();
+                try {
+                    if (raw === "") {
+                        await patchStock(getSym(), { price_override: null });
+                        s.price_override = null;
+                    } else {
+                        const val = parseFloat(raw);
+                        if (isNaN(val)) return;
+                        await patchStock(getSym(), { price_override: val });
+                        s.price_override = val;
+                    }
+                    await loadHoldings();
+                } catch (err) {
+                    alert(err.message);
+                    e.target.value = fmtRawForInput(priceForInput);
+                }
+            });
+
+            tr.querySelector('input[data-patch="pnl_pct"]').addEventListener("blur", async (e) => {
+                const target = parseFloat(e.target.value);
+                if (isNaN(target)) return;
+                const price = parseFloat(s.price_override != null ? s.price_override : s.current_price);
+                if (!price || price <= 0) {
+                    alert("請先確認現價（或填寫現價欄位）再調整損益%");
+                    e.target.value = pnlForInput;
+                    return;
+                }
+                const newAvg = price / (1 + target / 100);
+                if (isNaN(newAvg) || newAvg <= 0) return;
+                try {
+                    await patchStock(getSym(), { avg_price: Math.round(newAvg * 10000) / 10000 });
+                    await loadHoldings();
+                } catch (err) {
+                    alert(err.message);
+                    e.target.value = pnlForInput;
+                }
+            });
+
             tbody.appendChild(tr);
         }
 

@@ -221,6 +221,37 @@ class PortfolioDB:
         
         return True
     
+    def _rename_stock(self, user_id: str, old_symbol: str, new_symbol: str, **kwargs) -> bool:
+        """變更股票代碼（key），並套用其餘欄位更新。"""
+        data = self._load()
+        if user_id not in data or old_symbol not in data[user_id]["stocks"]:
+            return False
+        new_symbol = new_symbol.strip().upper()
+        if not new_symbol:
+            return False
+        if new_symbol != old_symbol and new_symbol in data[user_id]["stocks"]:
+            logger.warning("代碼已存在: %s", new_symbol)
+            return False
+        stock = data[user_id]["stocks"].pop(old_symbol)
+        stock["symbol"] = new_symbol
+        for key, value in kwargs.items():
+            if key == "symbol":
+                continue
+            if key == "holding_bucket":
+                stock[key] = _normalize_bucket(str(value))
+            elif key == "price_override":
+                if value is None or value == "":
+                    stock.pop("price_override", None)
+                else:
+                    stock["price_override"] = float(value)
+            elif key in ("shares", "avg_price", "note", "name"):
+                stock[key] = value
+        stock["updated_at"] = datetime.now().isoformat()
+        data[user_id]["stocks"][new_symbol] = stock
+        self._save(data)
+        logger.info("更名持股: user=%s, %s -> %s", user_id, old_symbol, new_symbol)
+        return True
+
     def update_stock(self, user_id: str, symbol: str, **kwargs) -> bool:
         """
         更新持股資訊
@@ -228,11 +259,18 @@ class PortfolioDB:
         Args:
             user_id: LINE 使用者 ID
             symbol: 股票代碼
-            **kwargs: 要更新的欄位 (shares, avg_price, note, name, holding_bucket)
+            **kwargs: shares, avg_price, note, name, holding_bucket, price_override, symbol（新代碼）
         
         Returns:
             成功回傳 True，失敗回傳 False
         """
+        new_symbol = kwargs.get("symbol")
+        if new_symbol is not None:
+            new_symbol = str(new_symbol).strip().upper()
+            if new_symbol and new_symbol != symbol:
+                rest = {k: v for k, v in kwargs.items() if k != "symbol"}
+                return self._rename_stock(user_id, symbol, new_symbol, **rest)
+
         data = self._load()
         
         if user_id not in data or symbol not in data[user_id]["stocks"]:
@@ -242,11 +280,17 @@ class PortfolioDB:
         stock = data[user_id]["stocks"][symbol]
         
         for key, value in kwargs.items():
-            if key in ["shares", "avg_price", "note", "name", "holding_bucket"]:
-                if key == "holding_bucket":
-                    stock[key] = _normalize_bucket(str(value))
+            if key == "symbol":
+                continue
+            if key == "holding_bucket":
+                stock[key] = _normalize_bucket(str(value))
+            elif key == "price_override":
+                if value is None or value == "":
+                    stock.pop("price_override", None)
                 else:
-                    stock[key] = value
+                    stock["price_override"] = float(value)
+            elif key in ["shares", "avg_price", "note", "name"]:
+                stock[key] = value
         
         stock["updated_at"] = datetime.now().isoformat()
         

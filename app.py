@@ -127,17 +127,30 @@ def api_portfolio_patch(symbol: str):
         updates["name"] = str(data.get("name") or "")
     if "holding_bucket" in data:
         updates["holding_bucket"] = str(data.get("holding_bucket") or "short_term")
+    if "symbol" in data:
+        new_sym = str(data.get("symbol") or "").strip().upper()
+        if new_sym:
+            updates["symbol"] = new_sym
+    if "price_override" in data:
+        po = data.get("price_override")
+        if po is None or po == "":
+            updates["price_override"] = None
+        else:
+            try:
+                updates["price_override"] = float(po)
+            except (TypeError, ValueError):
+                return jsonify({"error": "invalid price_override"}), 400
     if not updates:
         return jsonify({"error": "no updatable fields"}), 400
     ok = db.update_stock(uid, sym, **updates)
-    
-    # 发送通知
+    out_sym = updates.get("symbol") or sym
+
     if ok:
-        stock_name = updates.get("name", sym)
+        stock_name = updates.get("name", out_sym)
         total_stocks = len(db.get_portfolio(uid))
-        notification.notify_stock_updated(uid, sym, stock_name, updates, total_stocks)
-    
-    return jsonify({"success": ok, "symbol": sym})
+        notification.notify_stock_updated(uid, out_sym, stock_name, updates, total_stocks)
+
+    return jsonify({"success": ok, "symbol": out_sym})
 
 
 @app.delete("/api/portfolio/<symbol>")
@@ -180,9 +193,15 @@ def api_portfolio_prices():
         symbol = stock["symbol"]
         entry = dict(stock)
         stored_nm = str(stock.get("name") or "")
+        override = stock.get("price_override")
         try:
             info = yf.Ticker(symbol).info
             price = info.get("currentPrice") or info.get("regularMarketPrice") or 0
+            if override is not None:
+                try:
+                    price = float(override)
+                except (TypeError, ValueError):
+                    pass
             prev = info.get("previousClose") or 0
             change = round(price - prev, 2) if price and prev else 0
             pct = round(change / prev * 100, 2) if prev else 0
@@ -205,12 +224,25 @@ def api_portfolio_prices():
                 "name": resolve_stock_name_zh(symbol, yf_info=info or {}, stored_name=stored_nm),
             })
         except Exception:
+            price = 0.0
+            if override is not None:
+                try:
+                    price = float(override)
+                except (TypeError, ValueError):
+                    pass
+            avg_price = float(stock.get("avg_price") or 0)
+            pnl_amount = None
+            pnl_pct = None
+            if price and avg_price:
+                shares = float(stock.get("shares") or 0)
+                pnl_amount = round((price - avg_price) * shares, 2)
+                pnl_pct = round((price - avg_price) / avg_price * 100, 2)
             entry.update({
-                "current_price": 0,
+                "current_price": round(float(price), 2) if price else 0,
                 "change": 0,
                 "change_pct": 0,
-                "pnl_amount": None,
-                "pnl_pct": None,
+                "pnl_amount": pnl_amount,
+                "pnl_pct": pnl_pct,
                 "name": resolve_stock_name_zh(symbol, yf_info=None, stored_name=stored_nm),
             })
         results.append(entry)
