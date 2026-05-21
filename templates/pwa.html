@@ -553,13 +553,101 @@
         }
 
         #tblBody input[data-patch="name"] {
-            min-width: 5rem;
-            width: 6.5rem;
+            min-width: 9rem;
+            width: 11rem;
+            max-width: none;
         }
 
         #tblBody input[data-patch="note"] {
             min-width: 4rem;
             width: 5rem;
+        }
+
+        .holdings-table-wrap {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            margin: 0 -2px;
+            padding-bottom: 6px;
+        }
+
+        table.holdings-table {
+            min-width: 880px;
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        table.holdings-table th,
+        table.holdings-table td {
+            padding: 6px 5px;
+            vertical-align: middle;
+        }
+
+        table.holdings-table th:nth-child(2),
+        table.holdings-table td:nth-child(2) {
+            min-width: 11rem;
+        }
+
+        .import-file-btn {
+            display: inline-block;
+            width: 100%;
+            text-align: center;
+            cursor: pointer;
+            margin-top: 8px;
+            font: inherit;
+            font-weight: 600;
+            border-radius: 8px;
+            padding: 10px 12px;
+            box-sizing: border-box;
+        }
+
+        .import-file-btn.secondary {
+            background: transparent;
+            border: 1px solid var(--accent);
+            color: #c5cae9;
+        }
+
+        .hidden-file-input {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            border: 0;
+        }
+
+        .import-btn-desktop-only {
+            display: inline-block;
+        }
+
+        @media (max-width: 768px) {
+            #tblBody input[data-patch="name"] {
+                min-width: 12rem;
+                width: 14rem;
+                font-size: 0.85rem;
+            }
+
+            .import-btn-desktop-only,
+            .import-hint-desktop {
+                display: none !important;
+            }
+
+            .import-drop-zone .row {
+                flex-direction: column;
+            }
+
+            .import-drop-zone .row > * {
+                flex: 1 1 100%;
+                min-width: 0;
+            }
+        }
+
+        @media (min-width: 769px) {
+            .import-file-btn-mobile-only,
+            .import-hint-mobile {
+                display: none !important;
+            }
         }
     </style>
 </head>
@@ -568,7 +656,7 @@
     <header>
         <h1>📊 持股 Holding</h1>
         <div class="sub" id="uidLabel"></div>
-        <div class="sub" style="font-size:0.7rem;opacity:0.6;">版本 2026-05-21-v4</div>
+        <div class="sub" style="font-size:0.7rem;opacity:0.6;">版本 2026-05-21-v5</div>
     </header>
     <main>
         <!-- AI建議頁面 -->
@@ -687,18 +775,22 @@
                     <div class="import-drop-zone" id="importDropZoneList">
                         <div class="row" style="margin-bottom:0;">
                             <button type="button" class="secondary" id="btnExportHoldingsList">📥 匯出</button>
-                            <button type="button" class="secondary" id="btnImportHoldingsList">📤 匯入</button>
+                            <label for="fileImportHoldingsList" class="import-file-btn secondary import-file-btn-mobile-only">📤 匯入</label>
+                            <button type="button" class="secondary import-btn-desktop-only" id="btnImportHoldingsList">📤 匯入</button>
                         </div>
+                        <button type="button" class="secondary import-btn-desktop-only" id="btnImportFromLastList"
+                            style="margin-top:6px;font-size:0.78rem;padding:8px;">從上次匯出檔匯入</button>
                         <div class="last-export-path-info"
                             style="font-size:0.75rem;color:var(--muted);margin-top:8px;padding:8px;background:rgba(0,0,0,0.2);border-radius:6px;display:none;">
                         </div>
-                        <div style="font-size:0.72rem;color:var(--muted);margin-top:6px;text-align:center;">匯出會記住儲存位置；匯入優先讀取該位置 · 亦可拖放 JSON 備份檔</div>
+                        <div class="import-hint-mobile" style="font-size:0.72rem;color:var(--muted);margin-top:6px;text-align:center;">手機：點「匯入」選擇 JSON 備份檔</div>
+                        <div class="import-hint-desktop" style="font-size:0.72rem;color:var(--muted);margin-top:6px;text-align:center;">電腦：匯出會記住位置；匯入可讀取該檔或拖放 JSON</div>
                     </div>
-                    <input type="file" id="fileImportHoldingsList" accept=".json" style="display:none;" />
+                    <input type="file" id="fileImportHoldingsList" class="hidden-file-input" accept=".json,application/json,text/json" />
                     <div id="stockChart"></div>
                     <div id="holdMsg" class="msg"></div>
-                    <div style="overflow-x:auto;">
-                        <table>
+                    <div class="holdings-table-wrap">
+                        <table class="holdings-table">
                             <thead>
                                 <tr>
                                     <th>代碼</th>
@@ -735,20 +827,24 @@
                 <h3 style="margin-top:0; color: var(--text);">💾 持股資料備份</h3>
                 <div class="import-drop-zone" id="importDropZoneSettings">
                     <div class="row" style="margin-bottom:0;">
-                        <button type="button" class="secondary" id="btnImportHoldings">📤 匯入持股</button>
+                        <label for="fileImportHoldings" class="import-file-btn secondary import-file-btn-mobile-only">📤 匯入持股</label>
+                        <button type="button" class="secondary import-btn-desktop-only" id="btnImportHoldings">📤 匯入持股</button>
                         <button type="button" id="btnExportHoldings">📥 匯出持股</button>
                     </div>
+                    <button type="button" class="secondary import-btn-desktop-only" id="btnImportFromLastSettings"
+                        style="margin-top:6px;font-size:0.78rem;padding:8px;">從上次匯出檔匯入</button>
                     <div class="last-export-path-info"
                         style="font-size:0.75rem;color:var(--muted);margin-top:8px;padding:8px;background:rgba(0,0,0,0.2);border-radius:6px;display:none;">
                     </div>
-                    <div style="font-size:0.72rem;color:var(--muted);margin-top:6px;text-align:center;">匯出會記住儲存位置；匯入優先讀取該位置 · 亦可拖放 JSON 備份檔</div>
+                    <div class="import-hint-mobile" style="font-size:0.72rem;color:var(--muted);margin-top:6px;text-align:center;">手機：點「匯入持股」選擇 JSON 備份檔</div>
+                    <div class="import-hint-desktop" style="font-size:0.72rem;color:var(--muted);margin-top:6px;text-align:center;">電腦：匯出會記住位置；匯入可讀取該檔或拖放 JSON</div>
                 </div>
                 <div id="lastImportInfo"
                     style="font-size: 0.75rem; color: var(--muted); margin-bottom: 10px; padding: 8px; background: rgba(0,0,0,0.2); border-radius: 6px; display: none;">
                     <strong>上次匯入記錄：</strong><br>
                     <span id="lastImportDetails"></span>
                 </div>
-                <input type="file" id="fileImportHoldings" accept=".json" style="display:none;" />
+                <input type="file" id="fileImportHoldings" class="hidden-file-input" accept=".json,application/json,text/json" />
                 <div id="importMsg" class="msg"></div>
                 <div id="importStatus" style="font-size: 0.82rem; color: var(--muted); margin-top: 8px;"></div>
             </div>
@@ -1017,7 +1113,7 @@
 
             tr.innerHTML =
                 '<td><input type="text" data-patch="symbol" data-orig-sym="' + escapeHtml(origSym) + '" value="' + escapeHtml(s.symbol || "") + '" /></td>' +
-                '<td><input type="text" data-patch="name" value="' + escapeHtml(s.name || "") + '" /></td>' +
+                '<td><input type="text" data-patch="name" value="' + escapeHtml(s.name || "") + '" title="' + escapeHtml(s.name || "") + '" /></td>' +
                 '<td><select data-patch="holding_bucket" style="min-width:6.5rem;">' +
                 '<option value="short_term"' + (b === "short_term" ? " selected" : "") + '>短期持股</option>' +
                 '<option value="stable_profit"' + (b === "stable_profit" ? " selected" : "") + '>穩定獲利</option>' +
@@ -1879,8 +1975,8 @@
                 const defaultFilename = `持股備份_${new Date().toISOString().slice(0, 10)}.json`;
                 const dataStr = JSON.stringify(j.stocks, null, 2);
 
-                // 嘗試使用 File System Access API（較新的瀏覽器支援）
-                if ('showSaveFilePicker' in window) {
+                // 手機不支援 File System Access API，直接下載
+                if (!useNativeFileInputOnly() && "showSaveFilePicker" in window) {
                     try {
                         const opts = {
                             suggestedName: defaultFilename,
@@ -1963,8 +2059,28 @@
         const fileImportHoldings = document.getElementById("fileImportHoldings");
         const fileImportHoldingsList = document.getElementById("fileImportHoldingsList");
 
-        // 匯入：優先從上次匯出儲存位置讀取
+        function useNativeFileInputOnly() {
+            const ua = navigator.userAgent || "";
+            if (/Android|iPhone|iPad|iPod|Mobile/i.test(ua)) return true;
+            if (!("showOpenFilePicker" in window)) return true;
+            return navigator.maxTouchPoints > 0 && window.innerWidth < 900;
+        }
+
+        function triggerNativeImportPick(fileInputElement) {
+            if (!fileInputElement) return;
+            try {
+                fileInputElement.click();
+            } catch (e) {
+                console.warn("無法開啟檔案選擇器:", e);
+            }
+        }
+
+        // 匯入：電腦可優先從上次匯出儲存位置讀取；手機一律用系統檔案選擇器
         async function importFromSavedLocation(fileInputElement, msgElementId, statusElementId, switchView) {
+            if (useNativeFileInputOnly()) {
+                triggerNativeImportPick(fileInputElement);
+                return;
+            }
             const msg = document.getElementById(msgElementId);
             const fileHandle = await getExportFileHandle();
             if (fileHandle) {
@@ -1990,7 +2106,7 @@
         }
 
         async function openImportPicker(fileInputElement, msgElementId, statusElementId, switchView) {
-            if ('showOpenFilePicker' in window) {
+            if (!useNativeFileInputOnly() && "showOpenFilePicker" in window) {
                 try {
                     const opts = {
                         types: [{
@@ -2009,13 +2125,24 @@
                     console.warn('File System Access API 失敗，使用傳統方式:', e);
                 }
             }
-            fileInputElement.click();
+            triggerNativeImportPick(fileInputElement);
         }
 
         document.getElementById("btnImportHoldings").onclick = () =>
             importFromSavedLocation(fileImportHoldings, "importMsg", "importStatus", true);
         document.getElementById("btnImportHoldingsList").onclick = () =>
             importFromSavedLocation(fileImportHoldingsList, "holdMsg", null, false);
+
+        const btnImportFromLastList = document.getElementById("btnImportFromLastList");
+        if (btnImportFromLastList) {
+            btnImportFromLastList.onclick = () =>
+                importFromSavedLocation(fileImportHoldingsList, "holdMsg", null, false);
+        }
+        const btnImportFromLastSettings = document.getElementById("btnImportFromLastSettings");
+        if (btnImportFromLastSettings) {
+            btnImportFromLastSettings.onclick = () =>
+                importFromSavedLocation(fileImportHoldings, "importMsg", "importStatus", true);
+        }
 
         // JSON 拖放區設定
         function setupJsonDropZone(zoneId, msgElementId, statusElementId, switchView) {
