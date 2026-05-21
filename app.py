@@ -185,10 +185,22 @@ def api_portfolio_prices():
             prev = info.get("previousClose") or 0
             change = round(price - prev, 2) if price and prev else 0
             pct = round(change / prev * 100, 2) if prev else 0
+            
+            # 計算損益率
+            avg_price = float(stock.get("avg_price") or 0)
+            pnl_amount = None
+            pnl_pct = None
+            if price and avg_price:
+                shares = float(stock.get("shares") or 0)
+                pnl_amount = round((price - avg_price) * shares, 2)
+                pnl_pct = round((price - avg_price) / avg_price * 100, 2)
+            
             entry.update({
                 "current_price": round(float(price), 2),
                 "change": change,
                 "change_pct": pct,
+                "pnl_amount": pnl_amount,
+                "pnl_pct": pnl_pct,
                 "name": resolve_stock_name_zh(symbol, yf_info=info or {}, stored_name=stored_nm),
             })
         except Exception:
@@ -196,6 +208,8 @@ def api_portfolio_prices():
                 "current_price": 0,
                 "change": 0,
                 "change_pct": 0,
+                "pnl_amount": None,
+                "pnl_pct": None,
                 "name": resolve_stock_name_zh(symbol, yf_info=None, stored_name=stored_nm),
             })
         results.append(entry)
