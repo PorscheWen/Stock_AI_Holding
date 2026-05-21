@@ -1,15 +1,16 @@
 """
 Stock_AI_Holding — Flask：PWA 持股、截圖辨識 API、健康檢查
 """
+import json
 import logging
 import os
 
 from dotenv import load_dotenv
-from flask import Flask, jsonify, make_response, redirect, render_template, request, send_from_directory
+from flask import Flask, Response, jsonify, make_response, redirect, render_template, request, send_from_directory, stream_with_context
 import yfinance as yf
 
 from agents.screenshot_agent import ScreenshotAgent
-from agents.holding_advisor_agent import run_for_portfolio
+from agents.holding_advisor_agent import iter_for_portfolio, run_for_portfolio
 from database.portfolio_db import PortfolioDB
 from database import advisor_store
 from stock_display_zh import resolve_stock_name_zh
@@ -255,14 +256,10 @@ def api_screenshot_import():
     return jsonify(result)
 
 
-@app.post("/api/advisor/run")
-def api_advisor_run():
-    """一鍵執行 Agent 建議：依目前持股分析並寫入歷史。"""
-    uid, err = _require_user_id()
-    if err:
-        return err
+def _advisor_eligible_stocks(uid: str) -> tuple[list[dict], dict]:
+    """篩選股數 > 1 的持股，並回傳 analysis_filter 中繼資料。"""
     stocks = db.get_portfolio(uid)
-    eligible = []
+    eligible: list[dict] = []
     skipped_symbols: list[str] = []
     for s in stocks:
         try:
@@ -273,17 +270,57 @@ def api_advisor_run():
             skipped_symbols.append(str(s.get("symbol") or ""))
             continue
         eligible.append(s)
-
-    report = run_for_portfolio(eligible)
-    report["analysis_filter"] = {
+    filt = {
         "rule": "shares > 1",
         "input_count": len(stocks),
         "analyzed_count": len(eligible),
         "skipped_count": len(skipped_symbols),
         "skipped_symbols": [x for x in skipped_symbols if x],
     }
+    return eligible, filt
+
+
+@app.post("/api/advisor/run")
+def api_advisor_run():
+    """一鍵執行 Agent 建議：依目前持股分析並寫入歷史。"""
+    uid, err = _require_user_id()
+    if err:
+        return err
+    eligible, filt = _advisor_eligible_stocks(uid)
+    report = run_for_portfolio(eligible)
+    report["analysis_filter"] = filt
     saved = advisor_store.append_report(uid, report)
     return jsonify({"ok": True, "report": saved}), 200
+
+
+@app.post("/api/advisor/run-stream")
+def api_advisor_run_stream():
+    """SSE 串流分析進度，完成後寫入歷史並回傳 report。"""
+    uid, err = _require_user_id()
+    if err:
+        return err
+    eligible, filt = _advisor_eligible_stocks(uid)
+
+    @stream_with_context
+    def generate():
+        try:
+            for event in iter_for_portfolio(eligible):
+                if event.get("stage") == "done":
+                    report = event.get("report") or {}
+                    report["analysis_filter"] = filt
+                    saved = advisor_store.append_report(uid, report)
+                    event = {**event, "report": saved}
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+        except Exception as exc:
+            logger.exception("advisor run-stream failed")
+            err_evt = {"stage": "error", "message": str(exc)}
+            yield f"data: {json.dumps(err_evt, ensure_ascii=False)}\n\n"
+
+    return Response(
+        generate(),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.get("/api/advisor/latest")

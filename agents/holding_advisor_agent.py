@@ -10,6 +10,7 @@ Holding PWA — Agent 操作建議
 from __future__ import annotations
 
 import logging
+import re
 import time
 import urllib.request
 from datetime import datetime, timezone
@@ -29,6 +30,48 @@ REQUEST_DELAY = 1.0
 QUOTE_PROVIDER_PRIMARY = "Yahoo Finance（yfinance 公開 API）"
 QUOTE_PROVIDER_CROSS = "Stooq（日線 CSV 公開資料）"
 STRATEGY_VERSION = "v1.1"
+MAX_STOCK_ADVICE_SENTENCES = 5
+MAX_OPENING_ADVICE_SENTENCES = 4
+
+
+def _limit_sentences(text: str, max_n: int = 5) -> str:
+    """將文字裁切為最多 max_n 句（以 。！？； 斷句）。"""
+    text = (text or "").strip()
+    if not text:
+        return ""
+    chunks = re.split(r"(?<=[。！？；])", text)
+    picked: list[str] = []
+    for c in chunks:
+        c = c.strip()
+        if not c:
+            continue
+        picked.append(c if c.endswith(("。", "！", "？", "；")) else c + "。")
+        if len(picked) >= max_n:
+            break
+    if picked:
+        return "".join(picked)
+    return text if len(text) <= 120 else text[:117] + "…"
+
+
+def _brief_stock_advice_zh(row: dict[str, Any], max_sentences: int = MAX_STOCK_ADVICE_SENTENCES) -> str:
+    """個股建議：濃縮為五句話以內。"""
+    act = row.get("strategy_action") or "觀望"
+    score = row.get("strategy_score")
+    pos = row.get("position_suggest_pct")
+    parts: list[str] = []
+    if score is not None and pos is not None:
+        parts.append(f"建議動作「{act}」，策略分數 {score}/100，單檔比重約 {pos}%。")
+    else:
+        parts.append(f"建議動作「{act}」。")
+    direction = row.get("short_term_direction_zh")
+    if direction:
+        parts.append(f"短線方向：{direction}。")
+    hint = row.get("short_term_trade_hint_zh") or row.get("bucket_strategy_zh") or ""
+    if hint:
+        parts.append(hint.rstrip("。！？；") + "。")
+    if row.get("suggestion"):
+        parts.append(str(row["suggestion"]).rstrip("。！？；") + "。")
+    return _limit_sentences("".join(parts), max_sentences)
 
 
 def _holding_bucket(raw: str | None) -> str:
@@ -419,6 +462,7 @@ def _analyze_one(
             row["suggestion"] = "無法自公開 API 取得有效股價，請稍後再試或確認代碼。"
             _append_tw_market_hints(row, tw_bias=tw_bias, holding_bucket=bucket)
             _attach_strategy_fields(row, tw_bias)
+            row["brief_advice_zh"] = _brief_stock_advice_zh(row)
             row["advice_content"] = _stock_advice_text(row)
             return row
 
@@ -529,6 +573,7 @@ def _analyze_one(
     _append_tw_market_hints(row, tw_bias=tw_bias, holding_bucket=bucket)
     row["bucket_strategy_zh"] = _bucket_strategy_summary_zh(row)
     _attach_strategy_fields(row, tw_bias)
+    row["brief_advice_zh"] = _brief_stock_advice_zh(row)
     row["advice_content"] = _stock_advice_text(row)
     return row
 
@@ -637,48 +682,21 @@ def _build_quick_action_zh(items: list[dict[str, Any]], tw_bias: str) -> str:
         "neutral": "大盤基調中性，建議區間操作與嚴守紀律。",
     }.get(tw_bias, "大盤訊號中性，建議保守分批。")
 
-    return (
-        f"{lead} 目前加碼候選 {add_cnt} 檔、減碼/退出候選 {cut_cnt} 檔。"
-        f" {bias_hint}"
+    raw = (
+        f"{lead} 加碼候選 {add_cnt} 檔、減碼 {cut_cnt} 檔。{bias_hint}"
     )
+    return _limit_sentences(raw, MAX_OPENING_ADVICE_SENTENCES)
 
 
-def run_for_portfolio(stocks: list[dict]) -> dict[str, Any]:
-    stocks = stocks or []
-    tw_outlook = run_one_month_tw_outlook()
-    tw_bias = str(tw_outlook.get("bias_one_month") or "neutral").lower()
-    if tw_bias not in ("up", "down", "neutral"):
-        tw_bias = "neutral"
-
-    now = datetime.now(timezone.utc)
-    quote_fetched_at = now.isoformat(timespec="seconds")
-    advice_date_utc = now.strftime("%Y-%m-%d")
-    advice_date_local = datetime.now().strftime("%Y-%m-%d %H:%M")
-    try:
-        from zoneinfo import ZoneInfo
-
-        advice_datetime_tw = now.astimezone(ZoneInfo("Asia/Taipei")).strftime("%Y-%m-%d %H:%M 台灣")
-    except Exception:
-        advice_datetime_tw = None
-
-    items = []
-    for s in stocks:
-        sym = str(s.get("symbol", "")).strip()
-        if not sym:
-            continue
-        items.append(
-            _analyze_one(
-                sym,
-                float(s.get("shares") or 0),
-                float(s.get("avg_price") or 0),
-                str(s.get("note") or ""),
-                quote_fetched_at,
-                str(s.get("name") or ""),
-                str(s.get("holding_bucket") or "short_term"),
-                tw_bias,
-            )
-        )
-
+def _build_report_from_items(
+    items: list[dict[str, Any]],
+    tw_outlook: dict[str, Any],
+    tw_bias: str,
+    quote_fetched_at: str,
+    advice_date_utc: str,
+    advice_date_local: str,
+    advice_datetime_tw: str | None,
+) -> dict[str, Any]:
     up = sum(1 for x in items if (x.get("pnl_pct") or 0) > 0)
     down = sum(1 for x in items if (x.get("pnl_pct") or 0) < 0)
     avg_score = round(sum(float(x.get("strategy_score") or 0) for x in items) / len(items), 1) if items else None
@@ -724,3 +742,92 @@ def run_for_portfolio(stocks: list[dict]) -> dict[str, Any]:
         "stocks": items,
         "tw_market_outlook": tw_report,
     }
+
+
+def iter_for_portfolio(stocks: list[dict]):
+    """
+    逐步產生分析進度事件（供 SSE 串流）。
+    最後一筆 stage=done 含完整 report。
+    """
+    stocks = stocks or []
+    symbols = [str(s.get("symbol", "")).strip() for s in stocks if str(s.get("symbol", "")).strip()]
+    total = len(symbols)
+
+    yield {
+        "stage": "start",
+        "total": total,
+        "message": f"開始分析，共 {total} 檔持股…" if total else "尚無可分析持股",
+    }
+
+    yield {"stage": "tw_market", "message": "分析台股大盤約一個月展望…"}
+    tw_outlook = run_one_month_tw_outlook()
+    tw_bias = str(tw_outlook.get("bias_one_month") or "neutral").lower()
+    if tw_bias not in ("up", "down", "neutral"):
+        tw_bias = "neutral"
+
+    now = datetime.now(timezone.utc)
+    quote_fetched_at = now.isoformat(timespec="seconds")
+    advice_date_utc = now.strftime("%Y-%m-%d")
+    advice_date_local = datetime.now().strftime("%Y-%m-%d %H:%M")
+    try:
+        from zoneinfo import ZoneInfo
+
+        advice_datetime_tw = now.astimezone(ZoneInfo("Asia/Taipei")).strftime("%Y-%m-%d %H:%M 台灣")
+    except Exception:
+        advice_datetime_tw = None
+
+    items: list[dict[str, Any]] = []
+    current = 0
+    for s in stocks:
+        sym = str(s.get("symbol", "")).strip()
+        if not sym:
+            continue
+        current += 1
+        yield {
+            "stage": "stock",
+            "current": current,
+            "total": total,
+            "symbol": sym,
+            "message": f"分析個股 {sym}（{current}/{total}）…",
+        }
+        items.append(
+            _analyze_one(
+                sym,
+                float(s.get("shares") or 0),
+                float(s.get("avg_price") or 0),
+                str(s.get("note") or ""),
+                quote_fetched_at,
+                str(s.get("name") or ""),
+                str(s.get("holding_bucket") or "short_term"),
+                tw_bias,
+            )
+        )
+
+    yield {"stage": "finalize", "message": "彙整建議報告…"}
+    report = _build_report_from_items(
+        items,
+        tw_outlook,
+        tw_bias,
+        quote_fetched_at,
+        advice_date_utc,
+        advice_date_local,
+        advice_datetime_tw,
+    )
+    yield {"stage": "done", "message": "分析完成", "report": report}
+
+
+def run_for_portfolio(stocks: list[dict]) -> dict[str, Any]:
+    """同步執行完整分析（相容舊 API）。"""
+    report = None
+    for event in iter_for_portfolio(stocks):
+        if event.get("stage") == "done":
+            report = event.get("report")
+    return report or _build_report_from_items(
+        [],
+        run_one_month_tw_outlook(),
+        "neutral",
+        datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        datetime.now().strftime("%Y-%m-%d"),
+        datetime.now().strftime("%Y-%m-%d %H:%M"),
+        None,
+    )
