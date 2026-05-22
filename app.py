@@ -7,7 +7,6 @@ import os
 
 from dotenv import load_dotenv
 from flask import Flask, Response, jsonify, make_response, redirect, render_template, request, send_from_directory, stream_with_context
-import yfinance as yf
 
 from agents.screenshot_agent import ScreenshotAgent
 from agents.holding_advisor_agent import iter_for_portfolio, run_for_portfolio
@@ -15,6 +14,7 @@ from database.portfolio_db import PortfolioDB
 from database import advisor_store
 from stock_display_zh import resolve_stock_name_zh
 from utils import notification
+from utils.yf_helper import get_ticker_info
 
 load_dotenv()
 
@@ -195,7 +195,7 @@ def api_portfolio_prices():
         stored_nm = str(stock.get("name") or "")
         override = stock.get("price_override")
         try:
-            info = yf.Ticker(symbol).info
+            info = get_ticker_info(symbol)
             price = info.get("currentPrice") or info.get("regularMarketPrice") or 0
             if override is not None:
                 try:

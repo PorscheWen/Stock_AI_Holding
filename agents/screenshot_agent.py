@@ -9,10 +9,10 @@ import logging
 import re
 
 import anthropic
-import yfinance as yf
 
 from config.settings import ANTHROPIC_AUTH_TOKEN, CLAUDE_MODEL
 from stock_display_zh import resolve_stock_name_zh
+from utils.yf_helper import get_ticker_info
 
 logger = logging.getLogger(__name__)
 
@@ -191,7 +191,7 @@ class ScreenshotAgent:
             nm = str(row.get("name", "")).strip()
             yf_info = None
             try:
-                yf_info = yf.Ticker(sym).info or {}
+                yf_info = get_ticker_info(sym)
             except Exception:
                 yf_info = None
             resolved = resolve_stock_name_zh(sym, yf_info=yf_info, stored_name=nm)
