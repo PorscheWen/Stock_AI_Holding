@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import logging
 import re
-import time
 import urllib.request
 from datetime import datetime, timezone
 from typing import Any
@@ -20,12 +19,12 @@ import yfinance as yf
 
 from agents.tw_market_agent import run_one_month_tw_outlook
 from stock_display_zh import resolve_stock_name_zh
+from utils.yf_helper import get_ticker_with_history
 
 logger = logging.getLogger(__name__)
 
-# 請求間隔（秒），避免 API rate limit
-# 若仍遇到 rate limit 錯誤，可調整為 1.5 或 2.0
-REQUEST_DELAY = 1.0
+# Kept for backward-compat references; actual throttling is handled by yf_helper.
+REQUEST_DELAY = 1.5
 
 QUOTE_PROVIDER_PRIMARY = "Yahoo Finance（yfinance 公開 API）"
 QUOTE_PROVIDER_CROSS = "Stooq（日線 CSV 公開資料）"
@@ -433,14 +432,10 @@ def _analyze_one(
         "currency": None,
     }
     try:
-        # 添加延遲避免 rate limit
-        time.sleep(REQUEST_DELAY)
-        
-        t = yf.Ticker(symbol)
+        t, hist = get_ticker_with_history(symbol, period="4mo")
         info = t.info or {}
         row["name"] = resolve_stock_name_zh(symbol, yf_info=info, stored_name=stored_name)
 
-        hist = t.history(period="4mo")
         yahoo_ref, y_bar, ccy = _yahoo_price_and_bar(t, hist)
         row["currency"] = ccy
         row["quote_bar_date"] = y_bar

@@ -10,9 +10,9 @@ import re
 from typing import Any
 
 import anthropic
-import yfinance as yf
 
 from config.settings import ANTHROPIC_AUTH_TOKEN, CLAUDE_MODEL
+from utils.yf_helper import get_ticker_with_history
 
 logger = logging.getLogger(__name__)
 
@@ -55,8 +55,7 @@ def build_taiwan_market_snapshot() -> dict[str, Any]:
     for sym in TW_INDEX_SYMBOLS:
         row: dict[str, Any] = {"symbol": sym, "ok": False}
         try:
-            t = yf.Ticker(sym)
-            hist = t.history(period="4mo")
+            t, hist = get_ticker_with_history(sym, period="4mo")
             if hist is None or hist.empty:
                 indices[sym] = row
                 continue
