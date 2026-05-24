@@ -16,16 +16,18 @@ import urllib.request
 from datetime import datetime, timezone
 from typing import Any
 
-import yfinance as yf
-
 from agents.tw_market_agent import run_one_month_tw_outlook
 from stock_display_zh import resolve_stock_name_zh
+from utils.yfinance_utils import (
+    is_rate_limit_error,
+    yf_history_with_retry,
+    yf_info_with_retry,
+)
 
 logger = logging.getLogger(__name__)
 
 # 請求間隔（秒），避免 API rate limit
-# 若仍遇到 rate limit 錯誤，可調整為 1.5 或 2.0
-REQUEST_DELAY = 1.0
+REQUEST_DELAY = 1.5
 
 QUOTE_PROVIDER_PRIMARY = "Yahoo Finance（yfinance 公開 API）"
 QUOTE_PROVIDER_CROSS = "Stooq（日線 CSV 公開資料）"
@@ -344,12 +346,11 @@ def _stooq_last_close(symbol: str) -> tuple[float | None, str | None]:
         return None, None
 
 
-def _yahoo_price_and_bar(ticker: yf.Ticker, hist) -> tuple[float | None, str | None, str | None]:
+def _yahoo_price_and_bar(info: dict, hist) -> tuple[float | None, str | None, str | None]:
     """
     優先使用 Yahoo 即時欄位，否則用日線最後收盤。
     回傳 (價格, K 棒日期字串, currency)
     """
-    info = ticker.info or {}
     cur = info.get("currentPrice") or info.get("regularMarketPrice") or info.get("postMarketPrice")
     if cur is not None:
         try:
@@ -433,15 +434,13 @@ def _analyze_one(
         "currency": None,
     }
     try:
-        # 添加延遲避免 rate limit
         time.sleep(REQUEST_DELAY)
-        
-        t = yf.Ticker(symbol)
-        info = t.info or {}
+
+        info = yf_info_with_retry(symbol)
         row["name"] = resolve_stock_name_zh(symbol, yf_info=info, stored_name=stored_name)
 
-        hist = t.history(period="4mo")
-        yahoo_ref, y_bar, ccy = _yahoo_price_and_bar(t, hist)
+        hist = yf_history_with_retry(symbol, "4mo")
+        yahoo_ref, y_bar, ccy = _yahoo_price_and_bar(info, hist)
         row["currency"] = ccy
         row["quote_bar_date"] = y_bar
 
@@ -539,35 +538,19 @@ def _analyze_one(
             row["horizon"] = "波段"
 
     except Exception as e:
-        error_msg = str(e).lower()
         error_type = type(e).__name__
-        
-        # 檢查是否為 rate limit 錯誤
-        is_rate_limit = (
-            "429" in error_msg or 
-            "too many requests" in error_msg or 
-            "rate limit" in error_msg or
-            "ratelimit" in error_msg
-        )
-        
-        if is_rate_limit:
+        if is_rate_limit_error(e):
+            # Retry logic in yf_info_with_retry / yf_history_with_retry already
+            # exhausted all attempts before raising; record a clear user message.
             logger.error(
-                "[RATE LIMIT] %s: %s (錯誤類型: %s)\n"
-                "可能來源：\n"
-                "  1. Yahoo Finance API 請求過於頻繁\n"
-                "  2. Anthropic API token 額度不足或請求過快\n"
-                "建議：增加 REQUEST_DELAY 或減少持股數量",
-                symbol, e, error_type
+                "[RATE LIMIT] %s 已重試仍失敗 (%s): %s", symbol, error_type, e
             )
             row["suggestion"] = (
-                f"API 請求過於頻繁（{symbol}）。\n"
-                "可能原因：\n"
-                "1. Yahoo Finance 免費 API 達到請求上限\n"
-                "2. Anthropic API token 額度不足或請求過快\n"
+                f"Yahoo Finance API 請求超過上限（{symbol}），已自動重試仍失敗。\n"
                 "建議：等待 5-10 分鐘後重試，或減少一次分析的持股數量。"
             )
         else:
-            logger.warning("holding_advisor %s: %s (錯誤類型: %s)", symbol, e, error_type)
+            logger.warning("holding_advisor %s: %s (%s)", symbol, e, error_type)
             row["suggestion"] = f"分析失敗：{e}"
 
     _append_tw_market_hints(row, tw_bias=tw_bias, holding_bucket=bucket)
