@@ -10,9 +10,9 @@ import re
 from typing import Any
 
 import anthropic
-import yfinance as yf
 
 from config.settings import ANTHROPIC_AUTH_TOKEN, CLAUDE_MODEL
+from utils.yfinance_utils import yf_history_with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -55,8 +55,7 @@ def build_taiwan_market_snapshot() -> dict[str, Any]:
     for sym in TW_INDEX_SYMBOLS:
         row: dict[str, Any] = {"symbol": sym, "ok": False}
         try:
-            t = yf.Ticker(sym)
-            hist = t.history(period="4mo")
+            hist = yf_history_with_retry(sym, "4mo")
             if hist is None or hist.empty:
                 indices[sym] = row
                 continue

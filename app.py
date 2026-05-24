@@ -4,10 +4,10 @@ Stock_AI_Holding — Flask：PWA 持股、截圖辨識 API、健康檢查
 import json
 import logging
 import os
+import time
 
 from dotenv import load_dotenv
 from flask import Flask, Response, jsonify, make_response, redirect, render_template, request, send_from_directory, stream_with_context
-import yfinance as yf
 
 from agents.screenshot_agent import ScreenshotAgent
 from agents.holding_advisor_agent import iter_for_portfolio, run_for_portfolio
@@ -15,6 +15,11 @@ from database.portfolio_db import PortfolioDB
 from database import advisor_store
 from stock_display_zh import resolve_stock_name_zh
 from utils import notification
+from utils.yfinance_utils import is_rate_limit_error, yf_info_with_retry
+
+# Inter-symbol delay for the prices endpoint (seconds).
+# Keeps requests spread out to avoid Yahoo Finance rate limits.
+_PRICES_REQUEST_DELAY = 0.5
 
 load_dotenv()
 
@@ -189,13 +194,20 @@ def api_portfolio_prices():
         return err
     stocks = db.get_portfolio(uid)
     results = []
-    for stock in stocks:
+    for idx, stock in enumerate(stocks):
         symbol = stock["symbol"]
         entry = dict(stock)
         stored_nm = str(stock.get("name") or "")
         override = stock.get("price_override")
+
+        # Spread requests to avoid Yahoo Finance rate limits.
+        # The first symbol is fetched immediately; subsequent ones wait.
+        if idx > 0:
+            time.sleep(_PRICES_REQUEST_DELAY)
+
         try:
-            info = yf.Ticker(symbol).info
+            # yf_info_with_retry: retries on 429, uses shared 5-min TTL cache.
+            info = yf_info_with_retry(symbol)
             price = info.get("currentPrice") or info.get("regularMarketPrice") or 0
             if override is not None:
                 try:
@@ -205,8 +217,7 @@ def api_portfolio_prices():
             prev = info.get("previousClose") or 0
             change = round(price - prev, 2) if price and prev else 0
             pct = round(change / prev * 100, 2) if prev else 0
-            
-            # 計算損益率
+
             avg_price = float(stock.get("avg_price") or 0)
             pnl_amount = None
             pnl_pct = None
@@ -214,7 +225,7 @@ def api_portfolio_prices():
                 shares = float(stock.get("shares") or 0)
                 pnl_amount = round((price - avg_price) * shares, 2)
                 pnl_pct = round((price - avg_price) / avg_price * 100, 2)
-            
+
             entry.update({
                 "current_price": round(float(price), 2),
                 "change": change,
@@ -223,7 +234,11 @@ def api_portfolio_prices():
                 "pnl_pct": pnl_pct,
                 "name": resolve_stock_name_zh(symbol, yf_info=info or {}, stored_name=stored_nm),
             })
-        except Exception:
+        except Exception as exc:
+            if is_rate_limit_error(exc):
+                logger.warning("prices endpoint rate-limit on %s (all retries failed): %s", symbol, exc)
+            else:
+                logger.debug("prices endpoint error on %s: %s", symbol, exc)
             price = 0.0
             if override is not None:
                 try:
