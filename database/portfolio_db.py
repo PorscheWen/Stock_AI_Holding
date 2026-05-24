@@ -90,7 +90,8 @@ class PortfolioDB:
     # ── 使用者持股管理 ───────────────────────────────────
     def add_stock(self, user_id: str, symbol: str, shares: float = 0,
                   avg_price: float = 0, note: str = "", name: str = "",
-                  holding_bucket: str = "short_term") -> bool:
+                  holding_bucket: str = "short_term",
+                  price_override: Optional[float] = None) -> bool:
         """
         新增持股
         
@@ -102,6 +103,7 @@ class PortfolioDB:
             note: 備註
             name: 股票名稱 (選填)
             holding_bucket: stable_profit（穩定獲利）或 short_term（短期持股）
+            price_override: 手動覆寫現價（選填，用於損益率計算）
 
         Returns:
             成功回傳 True
@@ -116,7 +118,7 @@ class PortfolioDB:
         
         bucket = _normalize_bucket(holding_bucket)
 
-        data[user_id]["stocks"][symbol] = {
+        stock_data = {
             "symbol": symbol,
             "name": name,
             "shares": shares,
@@ -126,6 +128,10 @@ class PortfolioDB:
             "added_at": datetime.now().isoformat(),
             "updated_at": datetime.now().isoformat()
         }
+        if price_override is not None:
+            stock_data["price_override"] = price_override
+
+        data[user_id]["stocks"][symbol] = stock_data
 
         self._save(data)
         logger.info(f"新增持股: user={user_id}, symbol={symbol}, name={name}, bucket={bucket}, shares={shares}")
@@ -525,24 +531,39 @@ class PortfolioDB:
         
         for stock in stocks:
             try:
-                symbol = stock.get('symbol', '').strip().upper()
-                name = stock.get('name', '').strip()
-                shares = float(stock.get('shares', 0))
-                avg_price = float(stock.get('avg_price', 0))
-                note = stock.get('note', '').strip()
+                symbol = (stock.get('symbol') or '').strip().upper()
+                name = (stock.get('name') or '').strip()
+                # 使用 or 0 確保 JSON null 值不會導致 float(None) 錯誤
+                shares = float(stock.get('shares') or 0)
+                avg_price = float(stock.get('avg_price') or 0)
+                note = (stock.get('note') or '').strip()
                 bucket = _normalize_bucket(stock.get("holding_bucket"))
+
+                # 解析 price_override：支援 JSON 匯入的 price_override 欄位，
+                # 以及截圖匯入的 market_price 欄位，保留後可在離線或休市時計算損益率
+                price_override: Optional[float] = None
+                for _po_field in ('price_override', 'market_price'):
+                    _raw = stock.get(_po_field)
+                    if _raw is not None:
+                        try:
+                            _po_val = float(_raw)
+                            if _po_val > 0:
+                                price_override = _po_val
+                                break
+                        except (TypeError, ValueError):
+                            pass
 
                 if not symbol:
                     result["failed"] += 1
-                    result["errors"].append(f"跳過空的股票代碼")
+                    result["errors"].append("跳過空的股票代碼")
                     continue
-                
-                if self.add_stock(user_id, symbol, shares, avg_price, note, name, bucket):
+
+                if self.add_stock(user_id, symbol, shares, avg_price, note, name, bucket, price_override):
                     result["success"] += 1
                 else:
                     result["failed"] += 1
                     result["errors"].append(f"新增失敗: {symbol}")
-                    
+
             except Exception as e:
                 result["failed"] += 1
                 result["errors"].append(f"處理資料失敗: {str(e)}")
