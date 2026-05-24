@@ -80,9 +80,9 @@ def api_portfolio_add():
     if not symbol:
         return jsonify({"error": "symbol required"}), 400
     
-    shares = float(data.get("shares", 0))
-    avg_price = float(data.get("avg_price", 0))
-    name = str(data.get("name", ""))
+    shares = float(data.get("shares") or 0)
+    avg_price = float(data.get("avg_price") or 0)
+    name = str(data.get("name") or "")
     
     ok = db.add_stock(
         uid,
@@ -196,16 +196,17 @@ def api_portfolio_prices():
         override = stock.get("price_override")
         try:
             info = yf.Ticker(symbol).info
-            price = info.get("currentPrice") or info.get("regularMarketPrice") or 0
+            prev = info.get("previousClose") or 0
+            # 優先取即時價；若市場休市則退而使用昨收，確保損益率仍可計算
+            price = info.get("currentPrice") or info.get("regularMarketPrice") or prev or 0
             if override is not None:
                 try:
                     price = float(override)
                 except (TypeError, ValueError):
                     pass
-            prev = info.get("previousClose") or 0
-            change = round(price - prev, 2) if price and prev else 0
-            pct = round(change / prev * 100, 2) if prev else 0
-            
+            change = round(price - prev, 2) if price and prev and price != prev else 0
+            pct = round(change / prev * 100, 2) if prev and change else 0
+
             # 計算損益率
             avg_price = float(stock.get("avg_price") or 0)
             pnl_amount = None
@@ -214,7 +215,7 @@ def api_portfolio_prices():
                 shares = float(stock.get("shares") or 0)
                 pnl_amount = round((price - avg_price) * shares, 2)
                 pnl_pct = round((price - avg_price) / avg_price * 100, 2)
-            
+
             entry.update({
                 "current_price": round(float(price), 2),
                 "change": change,
@@ -401,8 +402,9 @@ def api_portfolio_export():
     if err:
         return err
     stocks = db.get_portfolio(uid)
-    export_data = [
-        {
+    export_data = []
+    for stock in stocks:
+        entry = {
             "symbol": stock["symbol"],
             "name": stock.get("name", ""),
             "shares": stock.get("shares", 0),
@@ -410,8 +412,10 @@ def api_portfolio_export():
             "holding_bucket": stock.get("holding_bucket", "short_term"),
             "note": stock.get("note", ""),
         }
-        for stock in stocks
-    ]
+        # 保留使用者手動設定的覆寫現價，確保匯入後損益率仍可計算
+        if stock.get("price_override") is not None:
+            entry["price_override"] = stock["price_override"]
+        export_data.append(entry)
     return jsonify({"stocks": export_data, "count": len(export_data)}), 200
 
 
